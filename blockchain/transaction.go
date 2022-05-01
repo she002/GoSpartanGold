@@ -20,24 +20,28 @@ type Output struct {
 type Transaction struct {
 	From    string
 	Nonce   uint32
-	Pubkey  [32]byte //256 bits, 32 bytes
-	Sig     [32]byte
+	Pubkey  rsa.PublicKey //256 bits, 32 bytes
+	Sig     []byte
 	Fee     uint32
 	Outputs []Output // slice
-	Data    map[string]string
+	Data    []byte
 }
 
-func NewTransaction(from string, nonce uint32, pubkey [32]byte, outputs []Output) (*Transaction, error) {
+func NewTransaction(from string, nonce uint32, pubkey rsa.PublicKey, sig []byte, fee uint32, outputs []Output, data []byte) (*Transaction, error) {
 	var transaction Transaction
 	transaction.From = from
 	transaction.Nonce = nonce
 	transaction.Pubkey = pubkey
+	transaction.Sig = make([]byte, len(sig))
+	copy(transaction.Sig, sig)
+	transaction.Fee = fee
 	if len(outputs) == 0 {
 		return nil, errors.New("outputs is empty")
 	}
 	transaction.Outputs = make([]Output, len(outputs))
 	copy(transaction.Outputs, outputs)
-
+	transaction.Data = make([]byte, len(data))
+	copy(transaction.Data, data)
 	return &transaction, nil
 }
 
@@ -60,9 +64,9 @@ func BytesToTransaction(data []byte) (*Transaction, error) {
 func (tran *Transaction) ToString() string {
 	info := fmt.Sprintf("from : %s\n"+
 		"nonce: %d\n"+
-		"pubkey: %s\n"+
+		"pubkey: \n\tN: %x\n\tE: %x\n"+
 		"sig: %s\n"+
-		"fee: %d\n", (*tran).From, (*tran).Nonce, hex.EncodeToString((*tran).Pubkey[:]), hex.EncodeToString((*tran).Sig[:]), (*tran).Fee)
+		"fee: %d\n", (*tran).From, (*tran).Nonce, (*tran).Pubkey.N, (*tran).Pubkey.E, hex.EncodeToString((*tran).Sig[:]), (*tran).Fee)
 
 	outputs := "outputs: [\n"
 	for _, v := range (*tran).Outputs {
@@ -70,11 +74,7 @@ func (tran *Transaction) ToString() string {
 	}
 	outputs = outputs + "]\n"
 	info = info + outputs
-	data := "data: {\n"
-	for key, element := range (*tran).Data {
-		data = data + fmt.Sprintf("%s: %s\n", key, element)
-	}
-	data = data + "}\n"
+	data := fmt.Sprintf("data: %s\n", hex.EncodeToString(tran.Data))
 	info = info + data
 
 	return info
@@ -97,6 +97,7 @@ func (tx *Transaction) Sign(privKey *rsa.PrivateKey) []byte {
 		fmt.Fprintf(os.Stderr, "Error from signing: %s\n", err)
 		return nil
 	}
+	copy(tx.Sig, signature)
 	return signature
 }
 

@@ -16,7 +16,7 @@ func TestNewTransaction(t *testing.T) {
 	output2 := Output{Address: "address2", Amount: 200}
 	outputs := []Output{output1, output2}
 
-	msg, err := NewTransaction(from, nonce, pubkey, outputs)
+	msg, err := NewTransaction(from, nonce, pubkey, outputs, nil)
 	if err != nil {
 		t.Fatalf(`NewTransaction(from, nonce, pubkey, outputs) Error: %v`, err)
 	}
@@ -31,7 +31,7 @@ func TestToBytes(t *testing.T) {
 	output2 := Output{Address: "address2", Amount: 200}
 	outputs := []Output{output1, output2}
 
-	msg, err1 := NewTransaction(from, nonce, pubkey, outputs)
+	msg, err1 := NewTransaction(from, nonce, pubkey, outputs, nil)
 	if err1 != nil {
 		t.Fatalf(`NewTransaction(from, nonce, pubkey, outputs) Error: %v`, err1)
 	}
