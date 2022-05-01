@@ -20,14 +20,14 @@ type Output struct {
 type Transaction struct {
 	From    string
 	Nonce   uint32
-	Pubkey  rsa.PublicKey //256 bits, 32 bytes
+	Pubkey  *rsa.PublicKey //256 bits, 32 bytes
 	Sig     []byte
 	Fee     uint32
 	Outputs []Output // slice
 	Data    []byte
 }
 
-func NewTransaction(from string, nonce uint32, pubkey rsa.PublicKey, sig []byte, fee uint32, outputs []Output, data []byte) (*Transaction, error) {
+func NewTransaction(from string, nonce uint32, pubkey *rsa.PublicKey, sig []byte, fee uint32, outputs []Output, data []byte) (*Transaction, error) {
 	var transaction Transaction
 	transaction.From = from
 	transaction.Nonce = nonce
@@ -66,7 +66,7 @@ func (tran *Transaction) ToString() string {
 		"nonce: %d\n"+
 		"pubkey: \n\tN: %x\n\tE: %x\n"+
 		"sig: %s\n"+
-		"fee: %d\n", (*tran).From, (*tran).Nonce, (*tran).Pubkey.N, (*tran).Pubkey.E, hex.EncodeToString((*tran).Sig[:]), (*tran).Fee)
+		"fee: %d\n", (*tran).From, (*tran).Nonce, (*tran).Pubkey.N, (*tran).Pubkey.E, hex.EncodeToString((*tran).Sig), (*tran).Fee)
 
 	outputs := "outputs: [\n"
 	for _, v := range (*tran).Outputs {
