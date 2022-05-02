@@ -93,7 +93,7 @@ func TestSign(t *testing.T) {
 		t.Fatalf("Sign() Error: Failed to sign transaction")
 	}
 
-	result := tx.VerifySignature(privKey, signature)
+	result := tx.VerifySignature()
 	if result != true {
 		t.Fatalf("VerifySignature() Error: failed to verify signature")
 	}
