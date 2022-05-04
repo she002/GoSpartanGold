@@ -8,9 +8,6 @@ import (
 	"time"
 )
 
-type BlockInterface interface {
-}
-
 type Block struct {
 	PrevBlockHash  []byte
 	Target         big.Int
