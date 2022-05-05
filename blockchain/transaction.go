@@ -112,13 +112,12 @@ func (tx *Transaction) GetHash() []byte {
 
 func (tx *Transaction) Id() string {
 	hashed := tx.GetHash()
-	return string(hashed)
+	return hex.EncodeToString(hashed)
 }
 
 func (tx *Transaction) Sign(privKey *rsa.PrivateKey) []byte {
 	rng := rand.Reader
 	hashed := tx.GetHash()
-	fmt.Println(hashed)
 	signature, err := rsa.SignPKCS1v15(rng, privKey, crypto.SHA256, hashed)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "Error from signing: %s\n", err)
@@ -132,10 +131,7 @@ func (tx *Transaction) Sign(privKey *rsa.PrivateKey) []byte {
 func (tx *Transaction) VerifySignature() bool {
 	hashed := tx.GetHash()
 	err := rsa.VerifyPKCS1v15(&tx.Info.Pubkey, crypto.SHA256, hashed[:], (*tx).Sig)
-	if err != nil {
-		return false
-	}
-	return true
+	return err == nil
 }
 
 func (tx *Transaction) TotalOutput() uint32 {

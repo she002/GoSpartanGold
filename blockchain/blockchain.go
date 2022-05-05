@@ -1,6 +1,8 @@
 package blockchain
 
-import "errors"
+import (
+	"errors"
+)
 
 // Network message constants
 const MISSING_BLOCK string = "MISSING_BLOCK"
@@ -24,16 +26,32 @@ const DEFAULT_TX_FEE uint32 = 1
 // Note that the genesis block is always considered to be confirmed.
 const CONFIRMED_DEPTH uint32 = 6
 
-func makeGenesisDefault(startingBalances map[string]uint32) {
-
+type BlockchainConfig struct {
+	coinbaseAmount uint32
+	defaultTxFee   uint32
+	confirmedDepth uint32
 }
 
-func makeGenesis(leading_zeros uint32, coinbase_amt uint32, tx_fee uint32, confirmed_depth uint32, starting_balances map[string]uint32) (*Block, error) {
+func MakeGenesisDefault(startingBalances map[string]uint32) (*Block, BlockchainConfig, error) {
+	return MakeGenesis(POW_LEADING_ZEROES, COINBASE_AMT_ALLOWED, DEFAULT_TX_FEE, CONFIRMED_DEPTH, startingBalances)
+}
+
+func MakeGenesis(leading_zeros uint32, coinbase_amt uint32, tx_fee uint32, confirmed_depth uint32, starting_balances map[string]uint32) (*Block, BlockchainConfig, error) {
+	var newconfig BlockchainConfig
+	newconfig.coinbaseAmount = coinbase_amt
+	newconfig.confirmedDepth = confirmed_depth
+	newconfig.defaultTxFee = tx_fee
+
 	if starting_balances == nil {
-		return nil, errors.New("makeGenesis(...): starting_balances cannot be nil")
+		return nil, newconfig, errors.New("makeGenesis(...): starting_balances cannot be nil")
 	}
 
-	newblock := NewBlock(nil, nil, target big.Int, coinbaseReward uint32)
+	target := CalculateTarget(leading_zeros)
+	newblock := NewBlock("", nil, target, coinbase_amt)
 
-	return nil, nil
+	for k, v := range starting_balances {
+		(*newblock).Balances[k] = v
+	}
+
+	return newblock, newconfig, nil
 }
