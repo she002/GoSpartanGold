@@ -22,28 +22,27 @@ type Miner struct {
 	CurrentBlock                *Block
 	MiningRounds                uint32
 	BlockChain                  *BlockChain
-	CBTXS                       *Set
-	NBTXS                       *Set
-	TXSET                       *Set
-	TX                          *Set
+	CBTXS                       *Set[*Transaction]
+	NBTXS                       *Set[*Transaction]
+	TXSET                       *Set[*Transaction]
+	TX                          *Set[*Transaction]
 }
 
 func newMiner(name string, Net *FakeNet, startingBlock *Block, keyPair *rsa.PrivateKey) *Miner {
 	var m *Miner
-	m.Net = Net 
+	m.Net = Net
 	m.Name = name
 
 	if keyPair == nil {
 		m.KeyPair = utils.GenerateKeypair()
-	}
-	else {
+	} else {
 		m.KeyPair = keyPair
 	}
 	m.Address = utils.GenerateAddress(&m.KeyPair.PublicKey)
 	m.Nonce = 0
 
-	m.PendingOutgoingTransactions = make (map[string]*Transaction)
-	m.PendingReceivedTransactions = make (map[string]*Transaction)
+	m.PendingOutgoingTransactions = make(map[string]*Transaction)
+	m.PendingReceivedTransactions = make(map[string]*Transaction)
 	m.Blocks = make(map[string]*Block)
 	m.PendingBlocks = make(map[string]*Block)
 
@@ -65,7 +64,7 @@ func (m *Miner) setGenesisBlock(startingBlock *Block) {
 	m.Blocks[blockId] = startingBlock
 }
 
-// Starts listeners and begins mining 
+// Starts listeners and begins mining
 func (m *Miner) initialize() {
 	m.startNewSearch()
 	m.on(START_MINING, m.findProof)
@@ -87,15 +86,15 @@ func (m *Miner) announceProof() {
 	m.Net.broadcast(PROOF_FOUND, m.CurrentBlock)
 }
 
-// Looks for a "proof". 
+// Looks for a "proof".
 func (m *Miner) findProof(oneAndDone bool) {
-	if(oneAndDone == nil) {
+	if oneAndDone == nil {
 		oneAndDone = false
 	}
 	pausePoint := m.CurrentBlock.Proof + m.MiningRounds
 
-	for( m.CurrentBlock.Proof < pausePoint) {
-		if(m.CurrentBlock.hasValidProof() == true) {
+	for m.CurrentBlock.Proof < pausePoint {
+		if m.CurrentBlock.hasValidProof() == true {
 			fmt.Printf("found proof for block %v", m.CurrentBlock.ChainLength)
 			fmt.Printf(": %v\n", m.CurrentBlock.Proof)
 			m.announceProof()
@@ -106,8 +105,9 @@ func (m *Miner) findProof(oneAndDone bool) {
 	}
 	m.CurrentBlock.Proof++
 	// If we are testing, don't continue the search
-	if(oneAndDone == false) {
-		setTimeout(() => m.emit(Blockchain.START_MINING), 0)
+	// TODO
+	if oneAndDone == false {
+		//setTimeout(() => m.emit(Blockchain.START_MINING), 0)
 	}
 }
 
@@ -117,15 +117,15 @@ func (m *Miner) syncTransaction(newBlock *Block) *Set {
 	m.CBTXS = &NewSet()
 	m.NBTXS = &NewSet()
 
-	for (newBlock.ChainLength > cb.ChainLength) {
+	for newBlock.ChainLength > cb.ChainLength {
 		for _, transaction := range newBlock.Transactions {
 			m.NBTXS.Add(transaction)
 			newBlock = m.Blocks[newBlock.PrevBlockHash]
 		}
 	}
-	currentBlockId,_ := cb.GetHash()
-	newBlockId,_ := newBlock.GetHash()
-	for (cb != nil && currentBlockId != newBlockId) {
+	currentBlockId, _ := cb.GetHash()
+	newBlockId, _ := newBlock.GetHash()
+	for cb != nil && currentBlockId != newBlockId {
 		for _, transaction := range cb.Transactions {
 			m.CBTXS.Add(transaction)
 		}
@@ -143,13 +143,13 @@ func (m *Miner) syncTransaction(newBlock *Block) *Set {
 	return m.CBTXS
 }
 
-// Returns false if transaction is not accepted.Otherwise add the 
+// Returns false if transaction is not accepted.Otherwise add the
 // transaction to the current block.
 func (m *Miner) addTransaction(tx *Transaction) bool {
 	//TODO
-	tx = m.BlockChain.makeTransaction(tx);
-	return m.CurrentBlock.addTransaction(tx, m);
-} 
+	tx = m.BlockChain.makeTransaction(tx)
+	return m.CurrentBlock.addTransaction(tx, m)
+}
 
 func (m *Miner) inheritedpostTransaction(outputs []Output, fee int) *Transaction {
 
@@ -175,19 +175,18 @@ func (m *Miner) inheritedpostTransaction(outputs []Output, fee int) *Transaction
 	return tx
 }
 
-func (m *Miner) minerpostTransaction(args ...interface{}) bool { 
+func (m *Miner) minerpostTransaction(args ...interface{}) bool {
 
 	var totalArgs []Output
 
-	for _,arg := range args {
+	for _, arg := range args {
 		s = append(totalArgs, arg)
-		
+
 	}
 
-    m.TX = inheritedpostTransaction(totalArgs,-1);
-    return m.addTransaction(m.TX);
-  }
-
+	m.TX = inheritedpostTransaction(totalArgs, -1)
+	return m.addTransaction(m.TX)
+}
 
 func (m *Miner) minerreceiveBlock(s *Block) {
 
@@ -195,7 +194,7 @@ func (m *Miner) minerreceiveBlock(s *Block) {
 	if s == nil {
 		block = BytesToBlock(bs)
 	}
-	blockId,_ = block.GetHash()
+	blockId, _ = block.GetHash()
 	if _, received := m.Blocks[blockId]; received {
 		return nil
 	}
@@ -210,7 +209,7 @@ func (m *Miner) minerreceiveBlock(s *Block) {
 	prevBlock, received := m.Blocks[block.PrevBlockHash]
 	if !received {
 		if !prevBlock.IsGenesisBlock() {
-			stuckBlocks, received :=m.PendingBlocks[block.PrevBlockHash]
+			stuckBlocks, received := m.PendingBlocks[block.PrevBlockHash]
 			if !received {
 				m.requestMissingBlock(*block)
 				stuckBlocks = make([]*Block, 10)
@@ -227,14 +226,14 @@ func (m *Miner) minerreceiveBlock(s *Block) {
 		}
 	}
 
-	blockId,_ = block.GetHash()
+	blockId, _ = block.GetHash()
 	m.Blocks[blockId] = block
 
 	if m.LastBlock.ChainLength < block.ChainLength {
 		m.LastBlock = block
 		m.setLastConfirmed()
 	}
-	
+
 	unstuckBlocks := make([]*Block, 0)
 	if val, received := m.PendingBlocks[blockId]; received {
 		unstuckBlocks = val
@@ -243,27 +242,22 @@ func (m *Miner) minerreceiveBlock(s *Block) {
 	delete(m.PendingBlocks, blockId)
 
 	for _, uBlock := range unstuckBlocks {
-		fmt.Printf("processing unstuck block %v", blockId))
+		fmt.Printf("processing unstuck block %v", blockId)
 		//TODO
 		m.receiveBlock(uBlock, "")
 	}
 
-
-
-
 	var b *Block = block
 
-	if (b == nil){
+	if b == nil {
 		return nil
-	}else{
-		if (m.CurrentBlock == true && b.ChainLength >= m.CurrentBlock.ChainLength){
+	} else {
+		if m.CurrentBlock == true && b.ChainLength >= m.CurrentBlock.ChainLength {
 			fmt.Printf("cutting over to the new chain \n")
 			m.TXSET = m.syncTransactions(b)
 			m.startNewSearch(m.TXSET)
 		}
 
 	}
-    
+
 }
-
-

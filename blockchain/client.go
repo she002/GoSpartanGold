@@ -3,6 +3,7 @@ package blockchain
 import (
 	"crypto/rsa"
 	"fmt"
+
 	"github.com/chuckpreslar/emission"
 )
 
@@ -10,7 +11,8 @@ import (
 type Client struct {
 	Name                        string
 	Address                     string
-	KeyPair                     *rsa.PrivateKey
+	privKey                     *rsa.PrivateKey
+	pubKey                      *rsa.PublicKey
 	Blocks                      map[string]*Block
 	PendingOutgoingTransactions map[string]*Transaction
 	PendingReceivedTransactions map[string]*Transaction
@@ -18,9 +20,9 @@ type Client struct {
 	LastBlock                   *Block
 	LastConfirmedBlock          *Block
 	ReceiveBlock                *Block
-	BlockChain                  *BlockChain
+	Config                      BlockchainConfig
 	Nonce                       uint32
-	Net                         *FakeNet          
+	Net                         *FakeNet
 	Emitter                     *emission.Emitter
 }
 
@@ -57,20 +59,20 @@ func (c *Client) availableGold() uint32 {
 // Broadcasts a transaction from the client giving gold to the clients
 func (c *Client) postTransaction(outputs []Output, fee uint32) *Transaction {
 	if fee < 0 {
-		fee = c.BlockChain.DEFAULT_TX_FEE
+		fee = c.Config.defaultTxFee
 	}
 	total := fee
 	for _, output := range outputs {
 		total += output.Amount
 	}
 	if total > c.availableGold() {
-		// modify here 
+		// modify here
 		panic(`Account doesn't have enough balance for transaction`)
 	}
-	// add data to the constructor 
-	tx := NewTransaction(c.Address, c.Nonce, &c.KeyPair.PublicKey, nil, fee, outputs, nil)
+	// add data to the constructor
+	tx, _ := NewTransaction(c.Address, c.Nonce, c.pubKey, nil, fee, outputs, nil)
 
-	tx.Sign(c.KeyPair)
+	tx.Sign(c.privKey)
 	c.PendingOutgoingTransactions[tx.Id()] = tx
 	c.Nonce++
 	c.Net.broadcast(POST_TRANSACTION, tx)
@@ -82,16 +84,20 @@ func (c *Client) postTransaction(outputs []Output, fee uint32) *Transaction {
 // updating the head of the blockchain.
 func (c *Client) receiveBlock(b *Block, bs []byte) *Block {
 	block := b
+	var err error = nil
 	if b == nil {
 		fmt.Println("Deseralize")
-		block = BytesToBlock(bs)
+		block, err = BytesToBlock(bs)
+		if err != nil {
+			panic("Failed to deseralize block")
+		}
 	}
-	blockId,_ = block.GetHash()
+	blockId, _ := block.GetHash()
 	if _, received := c.Blocks[blockId]; received {
 		return nil
 	}
-	
-	if !block.hasValidProof() && !block.isGenesisBlock() {
+
+	if !block.hasValidProof() && !block.IsGenesisBlock() {
 		fmt.Printf("Block %v does not have a valid proof", blockId)
 		return nil
 	}
@@ -99,10 +105,10 @@ func (c *Client) receiveBlock(b *Block, bs []byte) *Block {
 	var prevBlock *Block = nil
 	prevBlock, received := c.Blocks[block.PrevBlockHash]
 	if !received {
-		if !prevBlock.isGenesisBlock() {
+		if !prevBlock.IsGenesisBlock() {
 			stuckBlocks, received := c.PendingBlocks[block.PrevBlockHash]
 			if !received {
-				c.requestMissingBlock(*block)
+				c.requestMissingBlock(block)
 				// TODO: Define a set
 				stuckBlocks = make([]*Block, 10)
 			}
@@ -117,7 +123,7 @@ func (c *Client) receiveBlock(b *Block, bs []byte) *Block {
 			return nil
 		}
 	}
-	blockId,_ := block.GetHash()
+	blockId, _ = block.GetHash()
 	c.Blocks[blockId] = block
 
 	if c.LastBlock.ChainLength < block.ChainLength {
@@ -127,7 +133,7 @@ func (c *Client) receiveBlock(b *Block, bs []byte) *Block {
 	// TODO: Review code on client.js
 	unstuckBlocks := make([]*Block, 0)
 
-	blockId,_ := block.GetHash()
+	blockId, _ = block.GetHash()
 	if val, received := c.PendingBlocks[blockId]; received {
 		unstuckBlocks = val
 	}
@@ -137,7 +143,7 @@ func (c *Client) receiveBlock(b *Block, bs []byte) *Block {
 	for _, uBlock := range unstuckBlocks {
 		fmt.Printf("processing unstuck block %v", blockId)
 		// Need to change the "" into empty []byte
-		c.receiveBlock(uBlock, "")
+		c.receiveBlock(uBlock, nil)
 	}
 	return block
 }
@@ -152,7 +158,7 @@ func (c *Client) requestMissingBlock(block *Block) {
 
 // Resend any transactions in the pending list
 func (c *Client) resendPendingTransactions() {
-	for _,tx := range c.PendingOutgoingTransactions {
+	for _, tx := range c.PendingOutgoingTransactions {
 		c.Net.broadcast(POST_TRANSACTION, tx)
 	}
 }
@@ -175,10 +181,10 @@ func (c *Client) setLastConfirmed() {
 		confirmedBlockHeight = 0
 	}
 	for block.ChainLength > confirmedBlockHeight {
-		block, received = c.Blocks[block.PrevBlockHash]
+		block, _ = c.Blocks[block.PrevBlockHash]
 	}
 	c.LastConfirmedBlock = block
-	for id,tx := range c.PendingOutgoingTransactions {
+	for id, tx := range c.PendingOutgoingTransactions {
 		if c.LastConfirmedBlock.contains(tx) {
 			delete(c.PendingOutgoingTransactions, id)
 		}
@@ -210,7 +216,7 @@ func (c *Client) showBlockchain() {
 	block := c.LastBlock
 	fmt.Println("BLOCKCHAIN:")
 	for block != nil {
-		blockId,_ = block.GetHash()
+		blockId, _ := block.GetHash()
 		fmt.Println(blockId)
 		block = c.Blocks[block.PrevBlockHash]
 	}
@@ -223,26 +229,26 @@ func NewClient(name string, Net *FakeNet, startingBlock *Block, keyPair *rsa.Pri
 	c.Name = name
 
 	if keyPair == nil {
-		c.KeyPair = utils.GenerateKeypair()
+		c.privKey, c.pubKey, _ = GenerateKeypair()
+	} else {
+		c.privKey = keyPair
+		c.pubKey = &keyPair.PublicKey
 	}
-	else {
-		c.KeyPair = keyPair
-	}
-	c.Address = utils.GenerateAddress(&c.KeyPair.PublicKey)
+	c.Address = GenerateAddress(c.pubKey)
 	c.Nonce = 0
 
 	c.PendingOutgoingTransactions = make(map[string]*Transaction)
 	c.PendingReceivedTransactions = make(map[string]*Transaction)
 	c.Blocks = make(map[string]*Block)
 	c.PendingBlocks = make(map[string][]*Block)
-	
+
 	if startingBlock != nil {
 		c.setGenesisBlock(startingBlock)
 	}
 
 	receive := func(b *Block) {
 		// TODO
-		c.receiveBlock(b, "")
+		c.receiveBlock(b, nil)
 	}
 
 	c.Emitter = emission.NewEmitter()
