@@ -3,13 +3,10 @@ package blockchain
 import (
 	"crypto/rsa"
 	"fmt"
-
-	// import "./utils"
 	"github.com/chuckpreslar/emission"
 )
 
 // instead of using a constructor, we use a struct here to represent a client
-// Upper case first letter to change the scope to global
 type Client struct {
 	Name                        string
 	Address                     string
@@ -22,14 +19,14 @@ type Client struct {
 	LastConfirmedBlock          *Block
 	ReceiveBlock                *Block
 	BlockChain                  *BlockChain
-	Nonce                       int
-	Net                         *FakeNet          `json:"_"`
-	Emitter                     *emission.Emitter `json:"_"`
+	Nonce                       uint32
+	Net                         *FakeNet          
+	Emitter                     *emission.Emitter
 }
 
 type Message struct {
 	Address       string
-	PrevBlockHash []byte
+	PrevBlockHash string
 }
 
 // The genesis block can only be set if the client does not already have the genesis block.
@@ -39,40 +36,42 @@ func (c *Client) setGenesisBlock(startingBlock *Block) {
 	}
 	c.LastConfirmedBlock = startingBlock
 	c.LastBlock = startingBlock
-	c.Blocks[string(startingBlock.id())] = startingBlock
+	blockId, _ := startingBlock.GetHash()
+	c.Blocks[blockId] = startingBlock
 }
 
 // The amount of gold available to the client looking at the last confirmed block
-func (c Client) confirmedBalance() int {
-	return c.LastConfirmedBlock.balanceOf(c.Address)
+func (c *Client) confirmedBalance() uint32 {
+	return c.LastConfirmedBlock.BalanceOf(c.Address)
 }
 
 // Any gold received in the last confirmed block or before
-func (c Client) availableGold() int {
-	var pendingSpent int = 0
+func (c *Client) availableGold() uint32 {
+	var pendingSpent uint32 = 0
 	for _, tx := range c.PendingOutgoingTransactions {
 		pendingSpent += tx.TotalOutput()
 	}
-	return int(c.confirmedBalance()) - pendingSpent
+	return c.confirmedBalance() - pendingSpent
 }
 
 // Broadcasts a transaction from the client giving gold to the clients
-func (c *Client) postTransaction(outputs []Output, fee int) *Transaction {
+func (c *Client) postTransaction(outputs []Output, fee uint32) *Transaction {
 	if fee < 0 {
-		fee = c.BlockChain.DefaultTxFee
+		fee = c.BlockChain.DEFAULT_TX_FEE
 	}
 	total := fee
 	for _, output := range outputs {
 		total += output.Amount
 	}
 	if total > c.availableGold() {
+		// modify here 
 		panic(`Account doesn't have enough balance for transaction`)
 	}
-
-	tx := NewTransaction(c.Address, c.Nonce, &c.KeyPair.PublicKey, nil, fee, outputs)
+	// add data to the constructor 
+	tx := NewTransaction(c.Address, c.Nonce, &c.KeyPair.PublicKey, nil, fee, outputs, nil)
 
 	tx.Sign(c.KeyPair)
-	c.PendingOutgoingTransactions[string(tx.Id())] = tx
+	c.PendingOutgoingTransactions[tx.Id()] = tx
 	c.Nonce++
 	c.Net.broadcast(POST_TRANSACTION, tx)
 
@@ -81,80 +80,87 @@ func (c *Client) postTransaction(outputs []Output, fee int) *Transaction {
 
 // Validates and adds a block to the list of blocks, possibly
 // updating the head of the blockchain.
-func (c *Client) receiveBlock(b *Block, bs string) *Block {
+func (c *Client) receiveBlock(b *Block, bs []byte) *Block {
 	block := b
 	if b == nil {
 		fmt.Println("Deseralize")
-		block = c.BlockChain.deserializeBlock([]byte(bs))
+		block = BytesToBlock(bs)
 	}
-	if _, received := c.Blocks[string(block.id())]; received {
+	blockId,_ = block.GetHash()
+	if _, received := c.Blocks[blockId]; received {
 		return nil
 	}
-	if !block.hasValidProof() && !block.IsGenesisBlock() {
-		fmt.Printf("Block %v does not have a valid proof", string(block.id()))
+	
+	if !block.hasValidProof() && !block.isGenesisBlock() {
+		fmt.Printf("Block %v does not have a valid proof", blockId)
 		return nil
 	}
 
 	var prevBlock *Block = nil
-	prevBlock, received := c.Blocks[string(block.PrevBlockHash)]
+	prevBlock, received := c.Blocks[block.PrevBlockHash]
 	if !received {
-		if !prevBlock.IsGenesisBlock() {
-			stuckBlocks, received := c.PendingBlocks[string(block.PrevBlockHash)]
+		if !prevBlock.isGenesisBlock() {
+			stuckBlocks, received := c.PendingBlocks[block.PrevBlockHash]
 			if !received {
 				c.requestMissingBlock(*block)
+				// TODO: Define a set
 				stuckBlocks = make([]*Block, 10)
 			}
 			stuckBlocks = append(stuckBlocks, block)
-			c.PendingBlocks[string(block.PrevBlockHash)] = stuckBlocks
+			c.PendingBlocks[block.PrevBlockHash] = stuckBlocks
 			return nil
 		}
 	}
 
 	if !block.IsGenesisBlock() {
-		if !block.rerun(prevBlock) {
+		if !block.Rerun(prevBlock) {
 			return nil
 		}
 	}
-
-	c.Blocks[string(block.id())] = block
+	blockId,_ := block.GetHash()
+	c.Blocks[blockId] = block
 
 	if c.LastBlock.ChainLength < block.ChainLength {
 		c.LastBlock = block
 		c.setLastConfirmed()
 	}
-
+	// TODO: Review code on client.js
 	unstuckBlocks := make([]*Block, 0)
-	if val, received := c.PendingBlocks[string(block.id())]; received {
+
+	blockId,_ := block.GetHash()
+	if val, received := c.PendingBlocks[blockId]; received {
 		unstuckBlocks = val
 	}
 
-	delete(c.PendingBlocks, string(block.id()))
+	delete(c.PendingBlocks, blockId)
 
 	for _, uBlock := range unstuckBlocks {
-		fmt.Printf("processing unstuck block %v", string(block.id()))
+		fmt.Printf("processing unstuck block %v", blockId)
+		// Need to change the "" into empty []byte
 		c.receiveBlock(uBlock, "")
 	}
 	return block
 }
 
 // Request the previous block from the network.
-func (c Client) requestMissingBlock(block Block) {
+// convert []byte into string
+func (c *Client) requestMissingBlock(block *Block) {
 	fmt.Printf("Asking for missing block: %v", block.PrevBlockHash)
 	var msg = Message{c.Address, block.PrevBlockHash}
 	c.Net.broadcast(MISSING_BLOCK, msg)
 }
 
 // Resend any transactions in the pending list
-func (c Client) resendPendingTransactions() {
-	for _, tx := range c.PendingOutgoingTransactions {
+func (c *Client) resendPendingTransactions() {
+	for _,tx := range c.PendingOutgoingTransactions {
 		c.Net.broadcast(POST_TRANSACTION, tx)
 	}
 }
 
 // Takes an object representing a request for a missing block
-func (c Client) provideMissingBlock(msg Message) {
-	if val, received := c.Blocks[string(msg.PrevBlockHash)]; received {
-		fmt.Printf("Providing missing block %v", string(msg.PrevBlockHash))
+func (c *Client) provideMissingBlock(msg Message) {
+	if val, received := c.Blocks[msg.PrevBlockHash]; received {
+		fmt.Printf("Providing missing block %v", msg.PrevBlockHash)
 		block := val
 		c.Net.sendMessage(msg.Address, PROOF_FOUND, block)
 	}
@@ -169,10 +175,10 @@ func (c *Client) setLastConfirmed() {
 		confirmedBlockHeight = 0
 	}
 	for block.ChainLength > confirmedBlockHeight {
-		block = c.Blocks[string(block.PrevBlockHash)]
+		block, received = c.Blocks[block.PrevBlockHash]
 	}
 	c.LastConfirmedBlock = block
-	for id, tx := range c.PendingOutgoingTransactions {
+	for id,tx := range c.PendingOutgoingTransactions {
 		if c.LastConfirmedBlock.contains(tx) {
 			delete(c.PendingOutgoingTransactions, id)
 		}
@@ -180,7 +186,7 @@ func (c *Client) setLastConfirmed() {
 }
 
 // Utility method that displays all confirmed balances for all clients
-func (c Client) showAllBalances() {
+func (c *Client) showAllBalances() {
 	fmt.Printf("Showing balances:")
 	for id, balance := range c.LastConfirmedBlock.Balances {
 		fmt.Printf("	%v", id)
@@ -190,7 +196,7 @@ func (c Client) showAllBalances() {
 }
 
 // Logs messages to stdout
-func (c Client) log(msg Message) {
+func (c *Client) log(msg Message) {
 	name := c.Address[0:10]
 	if len(c.Name) > 0 {
 		name = c.Name
@@ -200,12 +206,13 @@ func (c Client) log(msg Message) {
 }
 
 // Print out the blocks in the blockchain from the current head to the genesis block.
-func (c Client) showBlockchain() {
+func (c *Client) showBlockchain() {
 	block := c.LastBlock
 	fmt.Println("BLOCKCHAIN:")
 	for block != nil {
-		fmt.Println(block.id())
-		block = c.Blocks[string(block.PrevBlockHash)]
+		blockId,_ = block.GetHash()
+		fmt.Println(blockId)
+		block = c.Blocks[block.PrevBlockHash]
 	}
 
 }
@@ -221,7 +228,7 @@ func NewClient(name string, Net *FakeNet, startingBlock *Block, keyPair *rsa.Pri
 	else {
 		c.KeyPair = keyPair
 	}
-	c.Address = utils.CalculateAddress(&c.KeyPair.PublicKey)
+	c.Address = utils.GenerateAddress(&c.KeyPair.PublicKey)
 	c.Nonce = 0
 
 	c.PendingOutgoingTransactions = make(map[string]*Transaction)
@@ -234,6 +241,7 @@ func NewClient(name string, Net *FakeNet, startingBlock *Block, keyPair *rsa.Pri
 	}
 
 	receive := func(b *Block) {
+		// TODO
 		c.receiveBlock(b, "")
 	}
 
