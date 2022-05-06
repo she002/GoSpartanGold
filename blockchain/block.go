@@ -144,7 +144,7 @@ func (block *Block) GetHashStr() string {
 	}
 }
 
-func (block *Block) isGenesisBlock() bool {
+func (block *Block) IsGenesisBlock() bool {
 	return block.ChainLength == 0
 }
 
