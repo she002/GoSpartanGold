@@ -1,26 +1,47 @@
 package blockchain
 
-var exists = struct{}{}
-
-type Set struct {
-	m map[*Transaction]struct{}
+type SetItemInterface interface {
+	GetHashStr() string
 }
 
-func NewSet() *set {
-	s := &set{}
-	s.m = make(map[*Transaction]struct{})
-	return s
+type Set[T SetItemInterface] struct {
+	items map[string]T
 }
 
-func (s *set) Add(value *Transaction) {
-	s.m[value] = exists
+func NewSet[T SetItemInterface]() *Set[T] {
+	var newSet Set[T]
+	newSet.items = make(map[string]T)
+	return &newSet
 }
 
-func (s *set) Remove(value *Transaction) {
-	delete(s.m, value)
+func (s *Set[T]) Add(value T) {
+	if !s.Contains(value) {
+		hashStr := value.GetHashStr()
+		s.items[hashStr] = value
+	}
 }
 
-func (s *set) Contains(value *Transaction) bool {
-	_, c := s.m[value]
+func (s *Set[T]) Remove(value T) {
+	if s.Contains(value) {
+		hashStr := value.GetHashStr()
+		delete(s.items, hashStr)
+	}
+}
+
+func (s *Set[T]) Contains(value T) bool {
+	hashStr := value.GetHashStr()
+	_, c := s.items[hashStr]
 	return c
+}
+
+func (s *Set[T]) Size() int {
+	return len(s.items)
+}
+
+func (s *Set[T]) ToArray() []T {
+	var arr []T
+	for _, v := range s.items {
+		arr = append(arr, v)
+	}
+	return arr
 }

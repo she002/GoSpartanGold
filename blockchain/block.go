@@ -133,6 +133,17 @@ func (block *Block) GetHash() (string, error) {
 	}
 }
 
+func (block *Block) GetHashStr() string {
+	blockData, err := BlockToBytes(block)
+	var blockHash [32]byte
+	if err == nil {
+		blockHash = sha256.Sum256(blockData)
+		return hex.EncodeToString(blockHash[:])
+	} else {
+		return ""
+	}
+}
+
 func (block *Block) isGenesisBlock() bool {
 	return block.ChainLength == 0
 }
