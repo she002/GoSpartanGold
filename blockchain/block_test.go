@@ -19,7 +19,7 @@ func TestGenesisBlock(t *testing.T) {
 		t.Fatalf(`Failed to make a genesis block`)
 	}
 
-	if genesis.isGenesisBlock() == false {
+	if genesis.IsGenesisBlock() == false {
 		t.Fatalf(`Failed to make a genesis block`)
 	}
 
@@ -40,7 +40,7 @@ func TestNewBlock(t *testing.T) {
 		t.Fatalf(`Failed to make a genesis block`)
 	}
 
-	if genesis.isGenesisBlock() == false {
+	if genesis.IsGenesisBlock() == false {
 		t.Fatalf(`Failed to make a genesis block`)
 	}
 
@@ -70,7 +70,7 @@ func TestAddTransction(t *testing.T) {
 		t.Fatalf(`Failed to make a genesis block`)
 	}
 
-	if genesis.isGenesisBlock() == false {
+	if genesis.IsGenesisBlock() == false {
 		t.Fatalf(`Failed to make a genesis block`)
 	}
 
@@ -118,7 +118,7 @@ func TestVerifyProof(t *testing.T) {
 		t.Fatalf(`Failed to make a genesis block`)
 	}
 
-	if genesis.isGenesisBlock() == false {
+	if genesis.IsGenesisBlock() == false {
 		t.Fatalf(`Failed to make a genesis block`)
 	}
 
