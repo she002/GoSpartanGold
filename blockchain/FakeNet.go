@@ -3,18 +3,24 @@ package blockchain
 // Simulate a network by using events to enable simpler testing
 import (
 	"encoding/json"
+
+	"github.com/chuckpreslar/emission"
 )
 
+type NetClient interface {
+	GetAddress() string
+	GetEmitter() *emission.Emitter
+}
+
 type FakeNet struct {
-	Clients map[string]*Client
-	o2      interface{}
+	Clients map[string]*NetClient
 }
 
 // Registers clients to the network.
 // Clients and Miners are registered by public key.
-func (f *FakeNet) Register(clientList ...*Client) {
+func (f *FakeNet) Register(clientList ...*NetClient) {
 	for _, client := range clientList {
-		f.Clients[client.Address] = client
+		f.Clients[(*client).GetAddress()] = client
 	}
 }
 
@@ -26,8 +32,8 @@ func (f *FakeNet) Broadcast(msg string, o interface{}) {
 }
 
 // Tests whether a client is registered with the network.
-func (f *FakeNet) Recognizes(client Client) bool {
-	if _, ok := f.Clients[client.Address]; ok {
+func (f *FakeNet) Recognizes(client *NetClient) bool {
+	if _, ok := f.Clients[(*client).GetAddress()]; ok {
 		return true
 	} else {
 		return false
@@ -46,12 +52,12 @@ func (f *FakeNet) SendMessage(addr string, msg string, o interface{}) {
 	}
 
 	client := f.Clients[addr]
-	client.Emitter.Emit(msg, o2)
+	(*client).GetEmitter().Emit(msg, o2)
 }
 
 func NewFakeNet() *FakeNet {
 	var f FakeNet
-	f.Clients = make(map[string]*Client)
+	f.Clients = make(map[string]*NetClient)
 
 	return &f
 }

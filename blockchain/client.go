@@ -43,21 +43,21 @@ func (c *Client) setGenesisBlock(startingBlock *Block) {
 }
 
 // The amount of gold available to the client looking at the last confirmed block
-func (c *Client) confirmedBalance() uint32 {
+func (c *Client) ConfirmedBalance() uint32 {
 	return c.LastConfirmedBlock.BalanceOf(c.Address)
 }
 
 // Any gold received in the last confirmed block or before
-func (c *Client) availableGold() uint32 {
+func (c *Client) AvailableGold() uint32 {
 	var pendingSpent uint32 = 0
 	for _, tx := range c.PendingOutgoingTransactions {
 		pendingSpent += tx.TotalOutput()
 	}
-	return c.confirmedBalance() - pendingSpent
+	return c.ConfirmedBalance() - pendingSpent
 }
 
 // Broadcasts a transaction from the client giving gold to the clients
-func (c *Client) postTransaction(outputs []Output, fee uint32) *Transaction {
+func (c *Client) PostTransaction(outputs []Output, fee uint32) *Transaction {
 	if fee < 0 {
 		fee = c.Config.defaultTxFee
 	}
@@ -65,7 +65,7 @@ func (c *Client) postTransaction(outputs []Output, fee uint32) *Transaction {
 	for _, output := range outputs {
 		total += output.Amount
 	}
-	if total > c.availableGold() {
+	if total > c.AvailableGold() {
 		// modify here
 		panic(`Account doesn't have enough balance for transaction`)
 	}
@@ -157,7 +157,7 @@ func (c *Client) requestMissingBlock(block *Block) {
 }
 
 // Resend any transactions in the pending list
-func (c *Client) resendPendingTransactions() {
+func (c *Client) ResendPendingTransactions() {
 	for _, tx := range c.PendingOutgoingTransactions {
 		c.Net.Broadcast(POST_TRANSACTION, tx)
 	}
@@ -192,7 +192,7 @@ func (c *Client) setLastConfirmed() {
 }
 
 // Utility method that displays all confirmed balances for all clients
-func (c *Client) showAllBalances() {
+func (c *Client) ShowAllBalances() {
 	fmt.Printf("Showing balances:")
 	for id, balance := range c.LastConfirmedBlock.Balances {
 		fmt.Printf("	%v", id)
@@ -202,7 +202,7 @@ func (c *Client) showAllBalances() {
 }
 
 // Logs messages to stdout
-func (c *Client) log(msg Message) {
+func (c *Client) Log(msg Message) {
 	name := c.Address[0:10]
 	if len(c.Name) > 0 {
 		name = c.Name
@@ -212,7 +212,7 @@ func (c *Client) log(msg Message) {
 }
 
 // Print out the blocks in the blockchain from the current head to the genesis block.
-func (c *Client) showBlockchain() {
+func (c *Client) ShowBlockchain() {
 	block := c.LastBlock
 	fmt.Println("BLOCKCHAIN:")
 	for block != nil {
@@ -255,4 +255,11 @@ func NewClient(name string, Net *FakeNet, startingBlock *Block, keyPair *rsa.Pri
 	c.Emitter.On(PROOF_FOUND, receive)
 	c.Emitter.On(MISSING_BLOCK, c.provideMissingBlock)
 	return &c
+}
+
+func (c *Client) GetAddress() string {
+	return (*c).Address
+}
+func (c *Client) GetEmitter() *emission.Emitter {
+	return (*c).Emitter
 }
