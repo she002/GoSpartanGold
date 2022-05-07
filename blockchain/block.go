@@ -162,7 +162,7 @@ func (block *Block) hasValidProof() bool {
 }
 
 func (block *Block) AddTransaction(tx *Transaction) bool {
-	if (*block).contains(tx) {
+	if (*block).Contains(tx) {
 		fmt.Printf("Duplicate transaction %s", tx.Id())
 		return false
 	} else if (*tx).Sig == nil {
@@ -278,7 +278,7 @@ func (block *Block) TotalRewards() uint32 {
 	return total
 }
 
-func (block *Block) contains(tx *Transaction) bool {
+func (block *Block) Contains(tx *Transaction) bool {
 	if _, ok := (*block).Transactions[(*tx).Id()]; ok {
 		return true
 	}
