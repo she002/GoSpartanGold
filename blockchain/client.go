@@ -11,8 +11,8 @@ import (
 type Client struct {
 	Name                        string
 	Address                     string
-	privKey                     *rsa.PrivateKey
-	pubKey                      *rsa.PublicKey
+	PrivKey                     *rsa.PrivateKey
+	PubKey                      *rsa.PublicKey
 	Blocks                      map[string]*Block
 	PendingOutgoingTransactions map[string]*Transaction
 	PendingReceivedTransactions map[string]*Transaction
@@ -70,12 +70,12 @@ func (c *Client) postTransaction(outputs []Output, fee uint32) *Transaction {
 		panic(`Account doesn't have enough balance for transaction`)
 	}
 	// add data to the constructor
-	tx, _ := NewTransaction(c.Address, c.Nonce, c.pubKey, nil, fee, outputs, nil)
+	tx, _ := NewTransaction(c.Address, c.Nonce, c.PubKey, nil, fee, outputs, nil)
 
-	tx.Sign(c.privKey)
+	tx.Sign(c.PrivKey)
 	c.PendingOutgoingTransactions[tx.Id()] = tx
 	c.Nonce++
-	c.Net.broadcast(POST_TRANSACTION, tx)
+	c.Net.Broadcast(POST_TRANSACTION, tx)
 
 	return tx
 }
@@ -153,13 +153,13 @@ func (c *Client) receiveBlock(b *Block, bs []byte) *Block {
 func (c *Client) requestMissingBlock(block *Block) {
 	fmt.Printf("Asking for missing block: %v", block.PrevBlockHash)
 	var msg = Message{c.Address, block.PrevBlockHash}
-	c.Net.broadcast(MISSING_BLOCK, msg)
+	c.Net.Broadcast(MISSING_BLOCK, msg)
 }
 
 // Resend any transactions in the pending list
 func (c *Client) resendPendingTransactions() {
 	for _, tx := range c.PendingOutgoingTransactions {
-		c.Net.broadcast(POST_TRANSACTION, tx)
+		c.Net.Broadcast(POST_TRANSACTION, tx)
 	}
 }
 
@@ -168,7 +168,7 @@ func (c *Client) provideMissingBlock(msg Message) {
 	if val, received := c.Blocks[msg.PrevBlockHash]; received {
 		fmt.Printf("Providing missing block %v", msg.PrevBlockHash)
 		block := val
-		c.Net.sendMessage(msg.Address, PROOF_FOUND, block)
+		c.Net.SendMessage(msg.Address, PROOF_FOUND, block)
 	}
 }
 
@@ -229,12 +229,12 @@ func NewClient(name string, Net *FakeNet, startingBlock *Block, keyPair *rsa.Pri
 	c.Name = name
 
 	if keyPair == nil {
-		c.privKey, c.pubKey, _ = GenerateKeypair()
+		c.PrivKey, c.PubKey, _ = GenerateKeypair()
 	} else {
-		c.privKey = keyPair
-		c.pubKey = &keyPair.PublicKey
+		c.PrivKey = keyPair
+		c.PubKey = &keyPair.PublicKey
 	}
-	c.Address = GenerateAddress(c.pubKey)
+	c.Address = GenerateAddress(c.PubKey)
 	c.Nonce = 0
 
 	c.PendingOutgoingTransactions = make(map[string]*Transaction)

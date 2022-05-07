@@ -12,21 +12,21 @@ type FakeNet struct {
 
 // Registers clients to the network.
 // Clients and Miners are registered by public key.
-func (f *FakeNet) register(clientList ...*Client) {
+func (f *FakeNet) Register(clientList ...*Client) {
 	for _, client := range clientList {
 		f.Clients[client.Address] = client
 	}
 }
 
 // Broadcasts to all clients within this.clients.
-func (f *FakeNet) broadcast(msg string, o interface{}) {
+func (f *FakeNet) Broadcast(msg string, o interface{}) {
 	for address, _ := range f.Clients {
-		f.sendMessage(address, msg, o)
+		f.SendMessage(address, msg, o)
 	}
 }
 
 // Tests whether a client is registered with the network.
-func (f *FakeNet) recognizes(client Client) bool {
+func (f *FakeNet) Recognizes(client Client) bool {
 	if _, ok := f.Clients[client.Address]; ok {
 		return true
 	} else {
@@ -34,7 +34,7 @@ func (f *FakeNet) recognizes(client Client) bool {
 	}
 }
 
-func (f *FakeNet) sendMessage(addr string, msg string, o interface{}) {
+func (f *FakeNet) SendMessage(addr string, msg string, o interface{}) {
 	jsonByte, err := json.Marshal(o)
 	if err != nil {
 		panic(err)
