@@ -77,7 +77,8 @@ func (c *Client) PostTransaction(outputs []Output, fee uint32) *Transaction {
 	tx.Sign(c.PrivKey)
 	c.PendingOutgoingTransactions[tx.Id()] = tx
 	c.Nonce++
-	c.Net.Broadcast(POST_TRANSACTION, tx)
+	data, _ := TransactionToBytes(tx)
+	c.Net.Broadcast(POST_TRANSACTION, data)
 
 	return tx
 }
@@ -90,6 +91,7 @@ func (c *Client) ReceiveBlock(b Block) *Block {
 
 	blockId, _ := block.GetHash()
 	c.Log(fmt.Sprintf("receive block %s", blockId))
+
 	if _, received := (*c).Blocks[blockId]; received {
 		return nil
 	}
@@ -115,8 +117,8 @@ func (c *Client) ReceiveBlock(b Block) *Block {
 
 	}
 
-	c.Log("Before ")
-	fmt.Println(block.ToString())
+	//c.Log("Before ")
+	//fmt.Println(block.ToString())]
 
 	if !block.IsGenesisBlock() {
 		if !block.Rerun(prevBlock) {
@@ -124,8 +126,8 @@ func (c *Client) ReceiveBlock(b Block) *Block {
 		}
 	}
 
-	c.Log("After ")
-	fmt.Println(block.ToString())
+	//c.Log("After ")
+	//fmt.Println(block.ToString())
 
 	blockId, _ = block.GetHash()
 	c.Log(fmt.Sprintf("Add %s to Blocks", blockId))
@@ -150,6 +152,7 @@ func (c *Client) ReceiveBlock(b Block) *Block {
 		c.ReceiveBlock(*uBlock)
 	}
 	c.Log(fmt.Sprintf("block %s received", block.GetHashStr()))
+	fmt.Println(block.ToString())
 	return block
 }
 
@@ -168,13 +171,23 @@ func (c *Client) ReceiveBlockBytes(bs []byte) *Block {
 func (c *Client) RequestMissingBlock(block *Block) {
 	c.Log(fmt.Sprintf("Asking for missing block: %v", block.PrevBlockHash))
 	var msg = Message{(*c).Address, (*block).PrevBlockHash}
-	(*c).Net.Broadcast(MISSING_BLOCK, msg)
+	jsonByte, err := json.Marshal(msg)
+	if err != nil {
+		fmt.Println("RequestMissingBlock() Marshal Panic:")
+		panic(err)
+	}
+	(*c).Net.Broadcast(MISSING_BLOCK, jsonByte)
 }
 
 // Resend any transactions in the pending list
 func (c *Client) ResendPendingTransactions() {
 	for _, tx := range c.PendingOutgoingTransactions {
-		(*c).Net.Broadcast(POST_TRANSACTION, &tx)
+		jsonByte, err := json.Marshal(*tx)
+		if err != nil {
+			fmt.Println("ResendPendingTransactions() Marshal Panic:")
+			panic(err)
+		}
+		(*c).Net.Broadcast(POST_TRANSACTION, jsonByte)
 	}
 }
 
@@ -183,13 +196,17 @@ func (c *Client) ProvideMissingBlock(data []byte) {
 	var msg Message
 	err := json.Unmarshal(data, &msg)
 	if err != nil {
-		fmt.Println("SendMessage() unmarshal Panic:")
+		fmt.Println("ProvideMissingBlock() unmarshal Panic:")
 		panic(err)
 	}
 	if val, received := (*c).Blocks[msg.PrevBlockHash]; received {
 		c.Log(fmt.Sprintf("Providing missing block %v", val.GetHashStr()))
-		block := *val
-		(*c).Net.SendMessage(msg.Address, PROOF_FOUND, block)
+		data, err := BlockToBytes(val)
+		if err != nil {
+			fmt.Println("ProvideMissingBlock() Marshal Panic:")
+			panic(err)
+		}
+		(*c).Net.SendMessage(msg.Address, PROOF_FOUND, data)
 	}
 }
 

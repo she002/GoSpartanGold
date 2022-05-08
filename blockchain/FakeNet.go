@@ -2,9 +2,6 @@ package blockchain
 
 // Simulate a network by using events to enable simpler testing
 import (
-	"encoding/json"
-	"fmt"
-
 	"github.com/chuckpreslar/emission"
 )
 
@@ -26,9 +23,9 @@ func (f *FakeNet) Register(clientList ...NetClient) {
 }
 
 // Broadcasts to all clients within this.clients.
-func (f *FakeNet) Broadcast(msg string, o interface{}) {
+func (f *FakeNet) Broadcast(msg string, data []byte) {
 	for address := range f.Clients {
-		f.SendMessage(address, msg, o)
+		f.SendMessage(address, msg, data)
 	}
 }
 
@@ -60,13 +57,14 @@ func (f *FakeNet) SendMessage(addr string, msg string, o interface{}) {
 	(client).GetEmitter().Emit(msg, o2)
 }*/
 
-func (f *FakeNet) SendMessage(addr string, msg string, o interface{}) {
+func (f *FakeNet) SendMessage(addr string, msg string, jsonByte []byte) {
 
-	jsonByte, err := json.Marshal(o)
-	if err != nil {
-		fmt.Println("SendMessage() Marshal Panic:")
-		panic(err)
-	}
+	/*
+		jsonByte, err := json.Marshal(o)
+		if err != nil {
+			fmt.Println("SendMessage() Marshal Panic:")
+			panic(err)
+		}*/
 	client := f.Clients[addr]
 	(client).GetEmitter().Emit(msg, jsonByte)
 }

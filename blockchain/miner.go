@@ -92,7 +92,12 @@ func (m *Miner) StartNewSearch() {
 
 // Broadcast the block, with a valid proof included
 func (m *Miner) AnnounceProof() {
-	(*m).Net.Broadcast(PROOF_FOUND, m.CurrentBlock)
+	data, err := BlockToBytes(m.CurrentBlock)
+	if err != nil {
+		fmt.Println("AnnounceProof() Marshal Panic:")
+		panic(err)
+	}
+	(*m).Net.Broadcast(PROOF_FOUND, data)
 }
 
 // Looks for a "proof".

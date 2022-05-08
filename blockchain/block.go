@@ -121,17 +121,17 @@ func (block *Block) ToString() string {
 	blockStr = blockStr + fmt.Sprintf("RewardAddr: %s\n", (*block).RewardAddr)
 	blockStr = blockStr + fmt.Sprintf("CoinbaseReward: %d\n", (*block).CoinbaseReward)
 
-	balanceStr := "Balancecs: {\n"
+	balanceStr := "Balancecs: [\n"
 	for _, v := range (*block).Balances {
 		balanceStr = balanceStr + fmt.Sprintf("\t%s: %d\n", v.Id, v.Balance)
 	}
-	balanceStr = balanceStr + "}\n"
+	balanceStr = balanceStr + "]\n"
 
-	nextNonceStr := "nextNonceStr: {\n"
+	nextNonceStr := "nextNonceStr: [\n"
 	for _, v := range (*block).NextNonce {
 		nextNonceStr = nextNonceStr + fmt.Sprintf("\t%s: %d\n", v.Id, v.Nonce)
 	}
-	nextNonceStr = nextNonceStr + "}\n"
+	nextNonceStr = nextNonceStr + "]\n"
 
 	transactionStr := "Transactions: [\n"
 	for _, v := range (*block).Transactions {
@@ -213,7 +213,7 @@ func (block *Block) AddTransaction(tx *Transaction) bool {
 		fmt.Printf("Insufficient fund for transaction %s", tx.Id())
 		return false
 	}
-
+	fmt.Println("Add transaction")
 	nextNonceIndex := block.FindNextNonceIndex((*tx).Info.From)
 	if nextNonceIndex == -1 {
 		addNextNonce := NextNonceType{Id: (*tx).Info.From, Nonce: 0}
@@ -261,15 +261,15 @@ func (block *Block) Rerun(prevBlock *Block) bool {
 	}
 
 	// copy Balances from previous block
-	(*block).Balances = make([]BalanceType, 0)
-	if (*prevBlock).Balances != nil {
-		(*block).Balances = append((*block).Balances, (*prevBlock).Balances...)
+	block.Balances = make([]BalanceType, 0)
+	if prevBlock != nil && (*prevBlock).Balances != nil {
+		block.Balances = append(block.Balances, (*prevBlock).Balances...)
 	}
 
 	// copy NextNounce from previous block
-	(*block).NextNonce = make([]NextNonceType, 0)
-	if (*prevBlock).NextNonce != nil {
-		(*block).NextNonce = append((*block).NextNonce, (*prevBlock).NextNonce...)
+	block.NextNonce = make([]NextNonceType, 0)
+	if prevBlock != nil && (*prevBlock).NextNonce != nil {
+		block.NextNonce = append(block.NextNonce, (*prevBlock).NextNonce...)
 	}
 
 	// Adding coinbase reward for previous block
@@ -286,13 +286,13 @@ func (block *Block) Rerun(prevBlock *Block) bool {
 	}
 
 	// Re-enter all transactions
-	txMap := make([]TransactionType, 0)
+	txMap := make([]TransactionType, len((*block).Transactions))
 	copy(txMap, (*block).Transactions)
 	(*block).Transactions = make([]TransactionType, 0)
 	for _, v := range txMap {
-		(*block).AddTransaction(&v.Tx)
+		fmt.Printf("%s\n", v.Id)
+		block.AddTransaction(&v.Tx)
 	}
-
 	return true
 }
 

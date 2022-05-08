@@ -57,7 +57,7 @@ func TestNewClient(t *testing.T) {
 	secondBlock.AddTransaction(tx)
 
 	// find proof
-	secondBlock.Rerun(genesis)
+	//secondBlock.Rerun(genesis)
 
 	var MaxUint uint32 = ^uint32(0)
 	var verified bool = false
