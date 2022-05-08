@@ -101,7 +101,7 @@ func (m *Miner) FindProof(oneAndDone bool) {
 	pausePoint := (*m).CurrentBlock.Proof + (*m).MiningRounds
 
 	for (*m).CurrentBlock.Proof < pausePoint {
-		if (*m).CurrentBlock.hasValidProof() == true {
+		if (*m).CurrentBlock.hasValidProof() {
 			fmt.Printf("found proof for block %v", m.CurrentBlock.ChainLength)
 			fmt.Printf(": %v\n", m.CurrentBlock.Proof)
 			(*m).AnnounceProof()
@@ -113,7 +113,7 @@ func (m *Miner) FindProof(oneAndDone bool) {
 	m.CurrentBlock.Proof++
 	// If we are testing, don't continue the search
 	// TODO
-	if oneAndDone == false {
+	if !oneAndDone {
 		//setTimeout(() => m.emit(Blockchain.START_MINING), 0)
 	}
 }
@@ -126,7 +126,7 @@ func (m *Miner) SyncTransaction(newBlock *Block) *Set[*Transaction] {
 
 	for newBlock.ChainLength > cb.ChainLength {
 		for _, transaction := range newBlock.Transactions {
-			m.NBTXS.Add(&transaction)
+			m.NBTXS.Add(&transaction.Tx)
 			newBlock = m.Blocks[newBlock.PrevBlockHash]
 		}
 	}
@@ -134,10 +134,10 @@ func (m *Miner) SyncTransaction(newBlock *Block) *Set[*Transaction] {
 	newBlockId, _ := newBlock.GetHash()
 	for cb != nil && currentBlockId != newBlockId {
 		for _, transaction := range cb.Transactions {
-			m.CBTXS.Add(&transaction)
+			m.CBTXS.Add(&transaction.Tx)
 		}
 		for _, transaction := range newBlock.Transactions {
-			m.NBTXS.Add(&transaction)
+			m.NBTXS.Add(&transaction.Tx)
 		}
 		newBlock = m.Blocks[newBlock.PrevBlockHash]
 		cb = m.Blocks[cb.PrevBlockHash]
@@ -161,9 +161,6 @@ func (m *Miner) AddTransaction(tx *Transaction) bool {
 
 func (m *Miner) InheritedpostTransaction(outputs []Output, fee uint32) *Transaction {
 
-	if fee < 0 {
-		fee = (*m).Config.defaultTxFee
-	}
 	total := fee
 	for _, output := range outputs {
 		total += output.Amount

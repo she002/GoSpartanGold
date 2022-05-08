@@ -50,7 +50,8 @@ func MakeGenesis(leading_zeros uint32, coinbase_amt uint32, tx_fee uint32, confi
 	newblock := NewBlock("", nil, target, coinbase_amt)
 
 	for k, v := range starting_balances {
-		(*newblock).Balances[k] = v
+		newBalance := BalanceType{Id: k, Balance: v}
+		(*newblock).Balances = append((*newblock).Balances, newBalance)
 	}
 
 	return newblock, newconfig, nil

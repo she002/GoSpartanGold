@@ -144,5 +144,6 @@ func (tx *Transaction) TotalOutput() uint32 {
 	for _, v := range (*tx).Info.Outputs {
 		amount += v.Amount
 	}
+	amount += (*tx).Info.Fee
 	return amount
 }

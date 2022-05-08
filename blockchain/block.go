@@ -9,18 +9,65 @@ import (
 	"time"
 )
 
+type TransactionType struct {
+	Id string
+	Tx Transaction
+}
+
+type NextNonceType struct {
+	Id    string
+	Nonce uint32
+}
+
+type BalanceType struct {
+	Id      string
+	Balance uint32
+}
+
 type Block struct {
 	PrevBlockHash  string
 	Target         big.Int
 	Proof          uint32
-	Balances       map[string]uint32
-	NextNonce      map[string]uint32
-	Transactions   map[string]Transaction
-	TxList         []string
+	Balances       []BalanceType
+	NextNonce      []NextNonceType
+	Transactions   []TransactionType
 	ChainLength    uint32
 	Timestamp      time.Time
 	RewardAddr     string
 	CoinbaseReward uint32
+}
+
+func (block *Block) FindTransactionIndex(id string) int {
+	index := int(-1)
+	for i, v := range block.Transactions {
+		if v.Id == id {
+			index = i
+			break
+		}
+	}
+	return index
+}
+
+func (block *Block) FindNextNonceIndex(id string) int {
+	index := int(-1)
+	for i, v := range block.NextNonce {
+		if v.Id == id {
+			index = i
+			break
+		}
+	}
+	return index
+}
+
+func (block *Block) FindBalanceIndex(id string) int {
+	index := int(-1)
+	for i, v := range block.Balances {
+		if v.Id == id {
+			index = i
+			break
+		}
+	}
+	return index
 }
 
 func NewBlock(rewardAddr string, prevBlock *Block, target *big.Int, coinbaseReward uint32) *Block {
@@ -38,22 +85,19 @@ func NewBlock(rewardAddr string, prevBlock *Block, target *big.Int, coinbaseRewa
 		}
 	}
 
-	block.Balances = make(map[string]uint32)
+	// copy Balances from previous block
+	block.Balances = make([]BalanceType, 0)
 	if prevBlock != nil && (*prevBlock).Balances != nil {
-		for k, v := range (*prevBlock).Balances {
-			block.Balances[k] = v
-		}
+		block.Balances = append(block.Balances, (*prevBlock).Balances...)
 	}
 
-	block.NextNonce = make(map[string]uint32)
+	// copy NextNounce from previous block
+	block.NextNonce = make([]NextNonceType, 0)
 	if prevBlock != nil && (*prevBlock).NextNonce != nil {
-		for k, v := range (*prevBlock).NextNonce {
-			block.NextNonce[k] = v
-		}
+		block.NextNonce = append(block.NextNonce, (*prevBlock).NextNonce...)
 	}
 
-	block.Transactions = make(map[string]Transaction)
-	block.TxList = make([]string, 0)
+	block.Transactions = make([]TransactionType, 0)
 
 	block.ChainLength = 0
 	if prevBlock != nil {
@@ -78,30 +122,24 @@ func (block *Block) ToString() string {
 	blockStr = blockStr + fmt.Sprintf("CoinbaseReward: %d\n", (*block).CoinbaseReward)
 
 	balanceStr := "Balancecs: {\n"
-	if (*block).Balances != nil {
-		for k, v := range (*block).Balances {
-			balanceStr = balanceStr + fmt.Sprintf("\t%s: %d\n", k, v)
-		}
+	for _, v := range (*block).Balances {
+		balanceStr = balanceStr + fmt.Sprintf("\t%s: %d\n", v.Id, v.Balance)
 	}
 	balanceStr = balanceStr + "}\n"
 
 	nextNonceStr := "nextNonceStr: {\n"
-	if (*block).NextNonce != nil {
-		for k, v := range (*block).NextNonce {
-			nextNonceStr = nextNonceStr + fmt.Sprintf("\t%s: %d\n", k, v)
-		}
+	for _, v := range (*block).NextNonce {
+		nextNonceStr = nextNonceStr + fmt.Sprintf("\t%s: %d\n", v.Id, v.Nonce)
 	}
 	nextNonceStr = nextNonceStr + "}\n"
 
-	transactionStr := "TxList: [\n"
-	if (*block).NextNonce != nil {
-		for _, v := range (*block).TxList {
-			transactionStr = transactionStr + fmt.Sprintf("\t%s\n", v)
-		}
+	transactionStr := "Transactions: [\n"
+	for _, v := range (*block).Transactions {
+		transactionStr = transactionStr + fmt.Sprintf("\t%s\n", v.Id)
 	}
 	transactionStr = transactionStr + "]\n"
 
-	blockStr = blockStr + balanceStr + nextNonceStr + "Transactions: {...}\n" + transactionStr
+	blockStr = blockStr + balanceStr + nextNonceStr + transactionStr
 
 	return blockStr
 }
@@ -176,10 +214,13 @@ func (block *Block) AddTransaction(tx *Transaction) bool {
 		return false
 	}
 
-	var expectedNonce uint32 = 0
-	if val, ok := (*block).NextNonce[(*tx).Info.From]; ok {
-		expectedNonce = val
+	nextNonceIndex := block.FindNextNonceIndex((*tx).Info.From)
+	if nextNonceIndex == -1 {
+		addNextNonce := NextNonceType{Id: (*tx).Info.From, Nonce: 0}
+		(*block).NextNonce = append((*block).NextNonce, addNextNonce)
+		nextNonceIndex = len((*block).NextNonce) - 1
 	}
+	expectedNonce := (*block).NextNonce[nextNonceIndex].Nonce
 
 	if expectedNonce > (*tx).Info.Nonce {
 		fmt.Printf("Replayed transaction %s", tx.Id())
@@ -189,17 +230,25 @@ func (block *Block) AddTransaction(tx *Transaction) bool {
 		return false
 	}
 	var nextNonce uint32 = expectedNonce + 1
-	(*block).NextNonce[(*tx).Info.From] = nextNonce
+	(*block).NextNonce[nextNonceIndex].Nonce = nextNonce
 
 	var txId string = tx.Id()
-	(*block).Transactions[txId] = *tx
-	(*block).TxList = append((*block).TxList, txId)
+	txData := TransactionType{Id: txId, Tx: *tx}
+	(*block).Transactions = append((*block).Transactions, txData)
+
 	var senderBalance uint32 = block.BalanceOf((*tx).Info.From)
-	(*block).Balances[(*tx).Info.From] = senderBalance - tx.TotalOutput()
+	senderBalanceIndex := block.FindBalanceIndex((*tx).Info.From)
+	(*block).Balances[senderBalanceIndex].Balance = senderBalance - tx.TotalOutput()
 
 	for _, output := range (*tx).Info.Outputs {
 		var oldBalance uint32 = (*block).BalanceOf(output.Address)
-		(*block).Balances[output.Address] = oldBalance + output.Amount
+		oldBalanceId := block.FindBalanceIndex(output.Address)
+		if oldBalanceId == -1 {
+			balanceAcct := BalanceType{Id: output.Address, Balance: oldBalance + output.Amount}
+			(*block).Balances = append((*block).Balances, balanceAcct)
+		} else {
+			(*block).Balances[oldBalanceId].Balance = oldBalance + output.Amount
+		}
 	}
 
 	return true
@@ -212,54 +261,46 @@ func (block *Block) Rerun(prevBlock *Block) bool {
 	}
 
 	// copy Balances from previous block
-	(*block).Balances = make(map[string]uint32)
+	(*block).Balances = make([]BalanceType, 0)
 	if (*prevBlock).Balances != nil {
-		for k, v := range prevBlock.Balances {
-			(*block).Balances[k] = v
-		}
-	} else {
-		return false
+		(*block).Balances = append((*block).Balances, (*prevBlock).Balances...)
 	}
 
 	// copy NextNounce from previous block
-	(*block).NextNonce = make(map[string]uint32)
+	(*block).NextNonce = make([]NextNonceType, 0)
 	if (*prevBlock).NextNonce != nil {
-		for k, v := range prevBlock.NextNonce {
-			(*block).NextNonce[k] = v
-		}
-	} else {
-		return false
+		(*block).NextNonce = append((*block).NextNonce, (*prevBlock).NextNonce...)
 	}
 
 	// Adding coinbase reward for previous block
 	if (*prevBlock).RewardAddr != "" {
 		var winnerBalance uint32 = (*prevBlock).BalanceOf((*prevBlock).RewardAddr)
-		(*block).Balances[(*prevBlock).RewardAddr] = winnerBalance + prevBlock.CoinbaseReward
+		index := block.FindBalanceIndex((*prevBlock).RewardAddr)
+
+		if index == -1 {
+			newBalance := BalanceType{Id: (*prevBlock).RewardAddr, Balance: winnerBalance + prevBlock.CoinbaseReward}
+			(*block).Balances = append((*block).Balances, newBalance)
+		} else {
+			(*block).Balances[index].Balance = winnerBalance + prevBlock.CoinbaseReward
+		}
 	}
 
 	// Re-enter all transactions
-	txMap := (*block).Transactions
-	txList := (*block).TxList
-	(*block).Transactions = make(map[string]Transaction)
-	(*block).TxList = make([]string, 0)
-	if txMap != nil && txList != nil {
-		for _, v := range txList {
-			if tx, ok := txMap[v]; ok {
-				(*block).AddTransaction(&tx)
-			}
-		}
-	} else {
-		return false
+	txMap := make([]TransactionType, 0)
+	copy(txMap, (*block).Transactions)
+	(*block).Transactions = make([]TransactionType, 0)
+	for _, v := range txMap {
+		(*block).AddTransaction(&v.Tx)
 	}
 
 	return true
 }
 
 func (block *Block) BalanceOf(address string) uint32 {
-	if val, ok := (*block).Balances[address]; ok {
-		return val
+	index := block.FindBalanceIndex(address)
+	if index > -1 {
+		return block.Balances[index].Balance
 	} else {
-		(*block).Balances[address] = 0
 		return 0
 	}
 }
@@ -272,15 +313,13 @@ func (block *Block) SufficientFund(tx *Transaction) bool {
 func (block *Block) TotalRewards() uint32 {
 	var total uint32 = 0
 	for _, v := range (*block).Transactions {
-		total += v.Info.Fee
+		total += v.Tx.Info.Fee
 	}
 	total += (*block).CoinbaseReward
 	return total
 }
 
 func (block *Block) Contains(tx *Transaction) bool {
-	if _, ok := (*block).Transactions[(*tx).Id()]; ok {
-		return true
-	}
-	return false
+	index := block.FindTransactionIndex(tx.Id())
+	return index > -1
 }

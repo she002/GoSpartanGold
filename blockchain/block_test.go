@@ -53,7 +53,7 @@ func TestNewBlock(t *testing.T) {
 	fmt.Println(secondBlock.ToString())
 }
 
-func TestAddTransction(t *testing.T) {
+func TestAddTransaction(t *testing.T) {
 
 	// Generate some keys
 	privKey1, pubKey1, _ := GenerateKeypair()

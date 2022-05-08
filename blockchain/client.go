@@ -2,6 +2,7 @@ package blockchain
 
 import (
 	"crypto/rsa"
+	"encoding/json"
 	"fmt"
 
 	"github.com/chuckpreslar/emission"
@@ -83,23 +84,18 @@ func (c *Client) PostTransaction(outputs []Output, fee uint32) *Transaction {
 
 // Validates and adds a block to the list of blocks, possibly
 // updating the head of the blockchain.
-func (c *Client) ReceiveBlock(b *Block, bs []byte) *Block {
-	block := b
-	var err error = nil
-	if b == nil {
-		fmt.Println("Deseralize")
-		block, err = BytesToBlock(bs)
-		if err != nil {
-			panic("Failed to deseralize block")
-		}
-	}
+func (c *Client) ReceiveBlock(b Block) *Block {
+
+	block := &b
+
 	blockId, _ := block.GetHash()
+	c.Log(fmt.Sprintf("receive block %s", blockId))
 	if _, received := (*c).Blocks[blockId]; received {
 		return nil
 	}
 
 	if !block.hasValidProof() && !block.IsGenesisBlock() {
-		fmt.Printf("Block %v does not have a valid proof", blockId)
+		c.Log(fmt.Sprintf("Block %v does not have a valid proof\n", blockId))
 		return nil
 	}
 
@@ -107,7 +103,7 @@ func (c *Client) ReceiveBlock(b *Block, bs []byte) *Block {
 	prevBlock, received := (*c).Blocks[(*block).PrevBlockHash]
 	if !received && !block.IsGenesisBlock() {
 
-		stuckBlocks, received := (*c).PendingBlocks[block.PrevBlockHash]
+		stuckBlocks, received := (*c).PendingBlocks[(*block).PrevBlockHash]
 		if !received {
 			c.RequestMissingBlock(block)
 			// TODO: Define a set
@@ -119,21 +115,26 @@ func (c *Client) ReceiveBlock(b *Block, bs []byte) *Block {
 
 	}
 
+	c.Log("Before ")
+	fmt.Println(block.ToString())
+
 	if !block.IsGenesisBlock() {
 		if !block.Rerun(prevBlock) {
 			return nil
 		}
 	}
 
+	c.Log("After ")
+	fmt.Println(block.ToString())
+
 	blockId, _ = block.GetHash()
+	c.Log(fmt.Sprintf("Add %s to Blocks", blockId))
 	(*c).Blocks[blockId] = block
 
 	if (*(*c).LastBlock).ChainLength < (*block).ChainLength {
 		c.LastBlock = block
 		c.SetLastConfirmed()
 	}
-
-	blockId, _ = block.GetHash()
 
 	unstuckBlocks, received := (*c).PendingBlocks[blockId]
 	var unstuckBlocksArr []*Block
@@ -146,15 +147,26 @@ func (c *Client) ReceiveBlock(b *Block, bs []byte) *Block {
 	for _, uBlock := range unstuckBlocksArr {
 		c.Log(fmt.Sprintf("processing unstuck block %v", blockId))
 		// Need to change the "" into empty []byte
-		c.ReceiveBlock(uBlock, nil)
+		c.ReceiveBlock(*uBlock)
 	}
+	c.Log(fmt.Sprintf("block %s received", block.GetHashStr()))
 	return block
+}
+
+func (c *Client) ReceiveBlockBytes(bs []byte) *Block {
+
+	block, err := BytesToBlock(bs)
+	if err != nil {
+		panic("Failed to deseralize block")
+	}
+
+	return c.ReceiveBlock(*block)
 }
 
 // Request the previous block from the network.
 // convert []byte into string
 func (c *Client) RequestMissingBlock(block *Block) {
-	fmt.Printf("Asking for missing block: %v", block.PrevBlockHash)
+	c.Log(fmt.Sprintf("Asking for missing block: %v", block.PrevBlockHash))
 	var msg = Message{(*c).Address, (*block).PrevBlockHash}
 	(*c).Net.Broadcast(MISSING_BLOCK, msg)
 }
@@ -167,11 +179,17 @@ func (c *Client) ResendPendingTransactions() {
 }
 
 // Takes an object representing a request for a missing block
-func (c *Client) ProvideMissingBlock(msg Message) {
+func (c *Client) ProvideMissingBlock(data []byte) {
+	var msg Message
+	err := json.Unmarshal(data, &msg)
+	if err != nil {
+		fmt.Println("SendMessage() unmarshal Panic:")
+		panic(err)
+	}
 	if val, received := (*c).Blocks[msg.PrevBlockHash]; received {
-		fmt.Printf("Providing missing block %v", msg.PrevBlockHash)
-		block := val
-		(*c).Net.SendMessage(msg.Address, PROOF_FOUND, &block)
+		c.Log(fmt.Sprintf("Providing missing block %v", val.GetHashStr()))
+		block := *val
+		(*c).Net.SendMessage(msg.Address, PROOF_FOUND, block)
 	}
 }
 
@@ -249,13 +267,8 @@ func NewClient(name string, Net *FakeNet, startingBlock *Block, keyPair *rsa.Pri
 		c.SetGenesisBlock(startingBlock)
 	}
 
-	receive := func(b Block) {
-		// TODO
-		c.ReceiveBlock(&b, nil)
-	}
-
 	c.Emitter = emission.NewEmitter()
-	c.Emitter.On(PROOF_FOUND, receive)
+	c.Emitter.On(PROOF_FOUND, c.ReceiveBlockBytes)
 	c.Emitter.On(MISSING_BLOCK, c.ProvideMissingBlock)
 	return &c
 }
