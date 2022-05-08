@@ -290,7 +290,6 @@ func (block *Block) Rerun(prevBlock *Block) bool {
 	copy(txMap, (*block).Transactions)
 	(*block).Transactions = make([]TransactionType, 0)
 	for _, v := range txMap {
-		fmt.Printf("%s\n", v.Id)
 		block.AddTransaction(&v.Tx)
 	}
 	return true

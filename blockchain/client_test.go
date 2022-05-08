@@ -3,6 +3,7 @@ package blockchain
 import (
 	"fmt"
 	"testing"
+	"time"
 )
 
 func TestNewClient(t *testing.T) {
@@ -101,6 +102,11 @@ func TestNewClient(t *testing.T) {
 	client3.ReceiveBlock(*thirdBlock)
 	client2.ReceiveBlock(*thirdBlock)
 	client1.ReceiveBlock(*thirdBlock)
+
+	time.Sleep(2 * time.Second)
+
 	client1.ShowBlockchain()
+	client2.ShowBlockchain()
+	client3.ShowBlockchain()
 
 }

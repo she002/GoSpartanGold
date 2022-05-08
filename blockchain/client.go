@@ -4,6 +4,7 @@ import (
 	"crypto/rsa"
 	"encoding/json"
 	"fmt"
+	"sync"
 
 	"github.com/chuckpreslar/emission"
 )
@@ -25,6 +26,7 @@ type Client struct {
 	Nonce                       uint32
 	Net                         *FakeNet
 	Emitter                     *emission.Emitter
+	mu                          sync.Mutex
 }
 
 type Message struct {
@@ -78,7 +80,7 @@ func (c *Client) PostTransaction(outputs []Output, fee uint32) *Transaction {
 	c.PendingOutgoingTransactions[tx.Id()] = tx
 	c.Nonce++
 	data, _ := TransactionToBytes(tx)
-	c.Net.Broadcast(POST_TRANSACTION, data)
+	go c.Net.Broadcast(POST_TRANSACTION, data)
 
 	return tx
 }
@@ -86,11 +88,11 @@ func (c *Client) PostTransaction(outputs []Output, fee uint32) *Transaction {
 // Validates and adds a block to the list of blocks, possibly
 // updating the head of the blockchain.
 func (c *Client) ReceiveBlock(b Block) *Block {
+	c.mu.Lock()
+	defer c.mu.Unlock()
 
 	block := &b
-
 	blockId, _ := block.GetHash()
-	c.Log(fmt.Sprintf("receive block %s", blockId))
 
 	if _, received := (*c).Blocks[blockId]; received {
 		return nil
@@ -117,20 +119,13 @@ func (c *Client) ReceiveBlock(b Block) *Block {
 
 	}
 
-	//c.Log("Before ")
-	//fmt.Println(block.ToString())]
-
 	if !block.IsGenesisBlock() {
 		if !block.Rerun(prevBlock) {
 			return nil
 		}
 	}
 
-	//c.Log("After ")
-	//fmt.Println(block.ToString())
-
 	blockId, _ = block.GetHash()
-	c.Log(fmt.Sprintf("Add %s to Blocks", blockId))
 	(*c).Blocks[blockId] = block
 
 	if (*(*c).LastBlock).ChainLength < (*block).ChainLength {
@@ -147,12 +142,11 @@ func (c *Client) ReceiveBlock(b Block) *Block {
 	delete((*c).PendingBlocks, blockId)
 
 	for _, uBlock := range unstuckBlocksArr {
-		c.Log(fmt.Sprintf("processing unstuck block %v", blockId))
+		c.Log(fmt.Sprintf("processing unstuck block %v", uBlock.GetHashStr()))
 		// Need to change the "" into empty []byte
-		c.ReceiveBlock(*uBlock)
+		go c.ReceiveBlock(*uBlock)
 	}
 	c.Log(fmt.Sprintf("block %s received", block.GetHashStr()))
-	fmt.Println(block.ToString())
 	return block
 }
 
@@ -176,7 +170,7 @@ func (c *Client) RequestMissingBlock(block *Block) {
 		fmt.Println("RequestMissingBlock() Marshal Panic:")
 		panic(err)
 	}
-	(*c).Net.Broadcast(MISSING_BLOCK, jsonByte)
+	go (*c).Net.Broadcast(MISSING_BLOCK, jsonByte)
 }
 
 // Resend any transactions in the pending list
@@ -187,7 +181,7 @@ func (c *Client) ResendPendingTransactions() {
 			fmt.Println("ResendPendingTransactions() Marshal Panic:")
 			panic(err)
 		}
-		(*c).Net.Broadcast(POST_TRANSACTION, jsonByte)
+		go (*c).Net.Broadcast(POST_TRANSACTION, jsonByte)
 	}
 }
 
@@ -206,7 +200,7 @@ func (c *Client) ProvideMissingBlock(data []byte) {
 			fmt.Println("ProvideMissingBlock() Marshal Panic:")
 			panic(err)
 		}
-		(*c).Net.SendMessage(msg.Address, PROOF_FOUND, data)
+		go (*c).Net.SendMessage(msg.Address, PROOF_FOUND, data)
 	}
 }
 
