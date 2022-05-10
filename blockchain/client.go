@@ -45,7 +45,7 @@ func (c *Client) SetGenesisBlock(startingBlock *Block) {
 	if err != nil {
 		panic("Failed to get block hash")
 	}
-	c.Blocks[blockId] = startingBlock
+	(*c).Blocks[blockId] = startingBlock
 }
 
 // The amount of gold available to the client looking at the last confirmed block
@@ -74,13 +74,13 @@ func (c *Client) PostTransaction(outputs []Output, fee uint32) *Transaction {
 		panic(`Account doesn't have enough balance for transaction`)
 	}
 	// add data to the constructor
-	tx, _ := NewTransaction(c.Address, c.Nonce, c.PubKey, nil, fee, outputs, nil)
+	tx, _ := NewTransaction((*c).Address, (*c).Nonce, (*c).PubKey, nil, fee, outputs, nil)
 
-	tx.Sign(c.PrivKey)
-	c.PendingOutgoingTransactions[tx.Id()] = tx
-	c.Nonce++
+	tx.Sign((*c).PrivKey)
+	(*c).PendingOutgoingTransactions[tx.Id()] = tx
+	(*c).Nonce++
 	data, _ := TransactionToBytes(tx)
-	go c.Net.Broadcast(POST_TRANSACTION, data)
+	go (*c).Net.Broadcast(POST_TRANSACTION, data)
 
 	return tx
 }
@@ -88,8 +88,8 @@ func (c *Client) PostTransaction(outputs []Output, fee uint32) *Transaction {
 // Validates and adds a block to the list of blocks, possibly
 // updating the head of the blockchain.
 func (c *Client) ReceiveBlock(b Block) *Block {
-	c.mu.Lock()
-	defer c.mu.Unlock()
+	(*c).mu.Lock()
+	defer (*c).mu.Unlock()
 
 	block := &b
 	blockId, _ := block.GetHash()
@@ -114,7 +114,7 @@ func (c *Client) ReceiveBlock(b Block) *Block {
 			stuckBlocks = NewSet[*Block]()
 		}
 		stuckBlocks.Add(block)
-		(*c).PendingBlocks[block.PrevBlockHash] = stuckBlocks
+		(*c).PendingBlocks[(*block).PrevBlockHash] = stuckBlocks
 		return nil
 
 	}
@@ -129,7 +129,7 @@ func (c *Client) ReceiveBlock(b Block) *Block {
 	(*c).Blocks[blockId] = block
 
 	if (*(*c).LastBlock).ChainLength < (*block).ChainLength {
-		c.LastBlock = block
+		(*c).LastBlock = block
 		c.SetLastConfirmed()
 	}
 
@@ -163,7 +163,7 @@ func (c *Client) ReceiveBlockBytes(bs []byte) *Block {
 // Request the previous block from the network.
 // convert []byte into string
 func (c *Client) RequestMissingBlock(block *Block) {
-	c.Log(fmt.Sprintf("Asking for missing block: %v", block.PrevBlockHash))
+	c.Log(fmt.Sprintf("Asking for missing block: %v", (*block).PrevBlockHash))
 	var msg = Message{(*c).Address, (*block).PrevBlockHash}
 	jsonByte, err := json.Marshal(msg)
 	if err != nil {
@@ -175,7 +175,7 @@ func (c *Client) RequestMissingBlock(block *Block) {
 
 // Resend any transactions in the pending list
 func (c *Client) ResendPendingTransactions() {
-	for _, tx := range c.PendingOutgoingTransactions {
+	for _, tx := range (*c).PendingOutgoingTransactions {
 		jsonByte, err := json.Marshal(*tx)
 		if err != nil {
 			fmt.Println("ResendPendingTransactions() Marshal Panic:")
@@ -213,12 +213,12 @@ func (c *Client) SetLastConfirmed() {
 		confirmedBlockHeight = (*block).ChainLength - CONFIRMED_DEPTH
 	}
 	for (*block).ChainLength > confirmedBlockHeight {
-		block = c.Blocks[block.PrevBlockHash]
+		block = (*c).Blocks[(*block).PrevBlockHash]
 	}
-	c.LastConfirmedBlock = block
-	for id, tx := range c.PendingOutgoingTransactions {
+	(*c).LastConfirmedBlock = block
+	for id, tx := range (*c).PendingOutgoingTransactions {
 		if (*c).LastConfirmedBlock.Contains(tx) {
-			delete(c.PendingOutgoingTransactions, id)
+			delete((*c).PendingOutgoingTransactions, id)
 		}
 	}
 }
@@ -226,7 +226,7 @@ func (c *Client) SetLastConfirmed() {
 // Utility method that displays all confirmed balances for all clients
 func (c *Client) ShowAllBalances() {
 	fmt.Printf("Showing balances:")
-	for id, balance := range c.LastConfirmedBlock.Balances {
+	for id, balance := range (*(*c).LastConfirmedBlock).Balances {
 		fmt.Printf("	%v", id)
 		fmt.Printf("	%v", balance)
 		fmt.Println("")
@@ -250,7 +250,7 @@ func (c *Client) ShowBlockchain() {
 	for block != nil {
 		blockId, _ := block.GetHash()
 		fmt.Println(blockId)
-		block = (*c).Blocks[block.PrevBlockHash]
+		block = (*c).Blocks[(*block).PrevBlockHash]
 	}
 
 }

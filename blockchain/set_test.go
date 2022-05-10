@@ -37,17 +37,21 @@ func TestSet(t *testing.T) {
 
 	// Generate Keys
 	privKey1, pubKey1, _ := GenerateKeypair()
+	privKey2, pubKey2, _ := GenerateKeypair()
 
 	// Create Address from pubKey
 	from1 := GenerateAddress(pubKey1)
+	from2 := GenerateAddress(pubKey2)
 	tx1, _ := NewTransaction(from1, nonce, pubKey, nil, 100, outputs, nil)
-
+	tx2, _ := NewTransaction(from2, nonce, pubKey, nil, 100, outputs, nil)
 	tx1.Sign(privKey1)
+	tx2.Sign(privKey2)
 
 	if s.Contains(tx1) {
 		t.Fatalf("Error: set contains non exist item")
 	}
 
+	s.Add(tx1)
 	s.Add(tx1)
 
 	if s.Size() != 2 {
@@ -63,6 +67,17 @@ func TestSet(t *testing.T) {
 
 	if s.Contains(tx) || !s.Contains(tx1) {
 		t.Fatalf("Error: set fails to delete a item")
+	}
+
+	s.Add(tx2)
+	if s.Size() != 2 || !s.Contains(tx2) {
+		t.Fatalf("Error: set does not have 2 items")
+	}
+
+	s.Clear()
+
+	if s.Size() != 0 {
+		t.Fatalf("Error: set should have no item")
 	}
 
 }
