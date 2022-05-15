@@ -2,6 +2,8 @@ package blockchain
 
 // Simulate a network by using events to enable simpler testing
 import (
+	"sync"
+
 	"github.com/chuckpreslar/emission"
 )
 
@@ -12,11 +14,14 @@ type NetClient interface {
 
 type FakeNet struct {
 	Clients map[string]NetClient
+	mu      sync.Mutex
 }
 
 // Registers clients to the network.
 // Clients and Miners are registered by public key.
 func (f *FakeNet) Register(clientList ...NetClient) {
+	(*f).mu.Lock()
+	defer (*f).mu.Unlock()
 	for _, client := range clientList {
 		f.Clients[(client).GetAddress()] = client
 	}
@@ -24,13 +29,18 @@ func (f *FakeNet) Register(clientList ...NetClient) {
 
 // Broadcasts to all clients within this.clients.
 func (f *FakeNet) Broadcast(msg string, data []byte) {
+	(*f).mu.Lock()
+	defer (*f).mu.Unlock()
 	for address := range f.Clients {
-		f.SendMessage(address, msg, data)
+		client := f.Clients[address]
+		go (client).GetEmitter().Emit(msg, data)
 	}
 }
 
 // Tests whether a client is registered with the network.
 func (f *FakeNet) Recognizes(client *NetClient) bool {
+	(*f).mu.Lock()
+	defer (*f).mu.Unlock()
 	if _, ok := f.Clients[(*client).GetAddress()]; ok {
 		return true
 	} else {
@@ -65,8 +75,10 @@ func (f *FakeNet) SendMessage(addr string, msg string, jsonByte []byte) {
 			fmt.Println("SendMessage() Marshal Panic:")
 			panic(err)
 		}*/
+	(*f).mu.Lock()
+	defer (*f).mu.Unlock()
 	client := f.Clients[addr]
-	(client).GetEmitter().Emit(msg, jsonByte)
+	go (client).GetEmitter().Emit(msg, jsonByte)
 }
 
 func NewFakeNet() *FakeNet {

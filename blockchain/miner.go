@@ -82,12 +82,19 @@ func (m *Miner) SetGenesisBlock(startingBlock *Block) {
 
 // Starts listeners and begins mining
 func (m *Miner) Initialize() {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+
 	m.StartNewSearch(nil)
+
 	(*m).Emitter.On(START_MINING, m.FindProof)
 	(*m).Emitter.On(POST_TRANSACTION, m.AddTransactionBytes)
+
+	go (*m).Emitter.Emit(START_MINING)
 }
 
 func (m *Miner) StartNewSearch(txSet *Set[*Transaction]) {
+
 	//TODO assign currentBlock
 	target := CalculateTarget(POW_LEADING_ZEROES)
 	(*m).CurrentBlock = NewBlock((*m).Address, (*m).LastBlock, target, (*m).Config.coinbaseAmount)
@@ -98,6 +105,7 @@ func (m *Miner) StartNewSearch(txSet *Set[*Transaction]) {
 	}
 
 	txList := txSet.ToArray()
+
 	for _, transaction := range txList {
 		(*m).Transactions.Add(transaction)
 	}
@@ -109,10 +117,14 @@ func (m *Miner) StartNewSearch(txSet *Set[*Transaction]) {
 	(*m).Transactions.Clear()
 
 	(*m).CurrentBlock.Proof = 0
+
 }
 
 // Looks for a "proof".
 func (m *Miner) FindProof(oneAndDone bool) {
+
+	(*m).mu.Lock()
+	defer (*m).mu.Unlock()
 
 	pausePoint := (*m).CurrentBlock.Proof + (*m).MiningRounds
 
@@ -120,11 +132,12 @@ func (m *Miner) FindProof(oneAndDone bool) {
 		if (*m).CurrentBlock.hasValidProof() {
 			m.Log(fmt.Sprintf("found proof for block %d: %d", (*m).CurrentBlock.ChainLength, (*m).CurrentBlock.Proof))
 			m.AnnounceProof()
-			m.ReceiveBlock(*(*m).CurrentBlock)
+			go m.ReceiveBlock(*(*m).CurrentBlock)
 			break
 		}
 		(*m).CurrentBlock.Proof++
 	}
+
 	// If we are testing, don't continue the search
 	// TODO
 	if !oneAndDone {
@@ -134,12 +147,13 @@ func (m *Miner) FindProof(oneAndDone bool) {
 
 // Broadcast the block, with a valid proof included
 func (m *Miner) AnnounceProof() {
+
 	data, err := BlockToBytes((*m).CurrentBlock)
 	if err != nil {
 		fmt.Println("AnnounceProof() Marshal Panic:")
 		panic(err)
 	}
-	go (*m).Net.Broadcast(PROOF_FOUND, data)
+	(*m).Net.Broadcast(PROOF_FOUND, data)
 }
 
 // Validates and adds a block to the list of blocks, possibly
@@ -226,6 +240,7 @@ func (m *Miner) ReceiveBlockBytes(bs []byte) *Block {
 
 // This function should determine what transactions need to be added or deleted.
 func (m *Miner) SyncTransaction(newBlock *Block) *Set[*Transaction] {
+
 	cb := (*m).CurrentBlock
 	cbTxs := NewSet[*Transaction]()
 	nbTxs := NewSet[*Transaction]()
@@ -268,10 +283,13 @@ func (m *Miner) SyncTransaction(newBlock *Block) *Set[*Transaction] {
 // Returns false if transaction is not accepted.Otherwise add the
 // transaction to the current block.
 func (m *Miner) AddTransaction(tx *Transaction) {
+	(*m).mu.Lock()
+	defer (*m).mu.Unlock()
 	(*m).Transactions.Add(tx)
 }
 
 func (m *Miner) AddTransactionBytes(data []byte) {
+
 	tx, err := BytesToTransaction(data)
 	if err != nil {
 		panic("Failed to deserialize data")
@@ -295,6 +313,8 @@ func (m *Miner) AvailableGold() uint32 {
 
 func (m *Miner) PostTransaction(outputs []Output, fee uint32) {
 
+	(*m).mu.Lock()
+
 	total := fee
 	for _, output := range outputs {
 		total += output.Amount
@@ -310,7 +330,8 @@ func (m *Miner) PostTransaction(outputs []Output, fee uint32) {
 	(*m).PendingOutgoingTransactions[tx.Id()] = tx
 	(*m).Nonce++
 	data, _ := TransactionToBytes(tx)
-	go (*m).Net.Broadcast(POST_TRANSACTION, data)
+	(*m).Net.Broadcast(POST_TRANSACTION, data)
+	(*m).mu.Unlock()
 
 	m.AddTransaction(tx)
 }
@@ -325,11 +346,14 @@ func (m *Miner) RequestMissingBlock(block *Block) {
 		fmt.Println("RequestMissingBlock() Marshal Panic:")
 		panic(err)
 	}
-	go (*m).Net.Broadcast(MISSING_BLOCK, jsonByte)
+	(*m).Net.Broadcast(MISSING_BLOCK, jsonByte)
 }
 
 // Takes an object representing a request for a missing block
 func (m *Miner) ProvideMissingBlock(data []byte) {
+	(*m).mu.Lock()
+	defer (*m).mu.Unlock()
+
 	var msg Message
 	err := json.Unmarshal(data, &msg)
 	if err != nil {
@@ -343,7 +367,7 @@ func (m *Miner) ProvideMissingBlock(data []byte) {
 			fmt.Println("ProvideMissingBlock() Marshal Panic:")
 			panic(err)
 		}
-		go (*m).Net.SendMessage(msg.Address, PROOF_FOUND, data)
+		(*m).Net.SendMessage(msg.Address, PROOF_FOUND, data)
 	}
 }
 
@@ -368,11 +392,26 @@ func (m *Miner) SetLastConfirmed() {
 
 // Utility method that displays all confirmed balances for all clients
 func (m *Miner) ShowAllBalances() {
+	(*m).mu.Lock()
+	defer (*m).mu.Unlock()
 	fmt.Printf("Showing balances:")
 	for id, balance := range (*m).LastConfirmedBlock.Balances {
 		fmt.Printf("	%v", id)
 		fmt.Printf("	%v", balance)
 		fmt.Println("")
+	}
+}
+
+// Print out the blocks in the blockchain from the current head to the genesis block.
+func (m *Miner) ShowBlockchain() {
+	(*m).mu.Lock()
+	defer (*m).mu.Unlock()
+	block := (*m).LastBlock
+	fmt.Println("BLOCKCHAIN:")
+	for block != nil {
+		blockId, _ := block.GetHash()
+		fmt.Println(blockId)
+		block = (*m).Blocks[(*block).PrevBlockHash]
 	}
 }
 
@@ -384,4 +423,11 @@ func (m *Miner) Log(msg string) {
 	}
 	fmt.Printf("	%s", name)
 	fmt.Printf("	%s\n", msg)
+}
+
+func (m *Miner) GetAddress() string {
+	return (*m).Address
+}
+func (m *Miner) GetEmitter() *emission.Emitter {
+	return (*m).Emitter
 }

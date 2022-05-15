@@ -36,6 +36,7 @@ type Message struct {
 
 // The genesis block can only be set if the client does not already have the genesis block.
 func (c *Client) SetGenesisBlock(startingBlock *Block) {
+
 	if (*c).LastBlock != nil {
 		fmt.Printf("Cannot set starting block for existing blockchain.")
 	}
@@ -65,6 +66,9 @@ func (c *Client) AvailableGold() uint32 {
 // Broadcasts a transaction from the client giving gold to the clients
 func (c *Client) PostTransaction(outputs []Output, fee uint32) *Transaction {
 
+	(*c).mu.Lock()
+	defer (*c).mu.Unlock()
+
 	total := fee
 	for _, output := range outputs {
 		total += output.Amount
@@ -80,7 +84,7 @@ func (c *Client) PostTransaction(outputs []Output, fee uint32) *Transaction {
 	(*c).PendingOutgoingTransactions[tx.Id()] = tx
 	(*c).Nonce++
 	data, _ := TransactionToBytes(tx)
-	go (*c).Net.Broadcast(POST_TRANSACTION, data)
+	(*c).Net.Broadcast(POST_TRANSACTION, data)
 
 	return tx
 }
@@ -170,7 +174,7 @@ func (c *Client) RequestMissingBlock(block *Block) {
 		fmt.Println("RequestMissingBlock() Marshal Panic:")
 		panic(err)
 	}
-	go (*c).Net.Broadcast(MISSING_BLOCK, jsonByte)
+	(*c).Net.Broadcast(MISSING_BLOCK, jsonByte)
 }
 
 // Resend any transactions in the pending list
@@ -181,12 +185,14 @@ func (c *Client) ResendPendingTransactions() {
 			fmt.Println("ResendPendingTransactions() Marshal Panic:")
 			panic(err)
 		}
-		go (*c).Net.Broadcast(POST_TRANSACTION, jsonByte)
+		(*c).Net.Broadcast(POST_TRANSACTION, jsonByte)
 	}
 }
 
 // Takes an object representing a request for a missing block
 func (c *Client) ProvideMissingBlock(data []byte) {
+	(*c).mu.Lock()
+	defer (*c).mu.Unlock()
 	var msg Message
 	err := json.Unmarshal(data, &msg)
 	if err != nil {
@@ -200,7 +206,7 @@ func (c *Client) ProvideMissingBlock(data []byte) {
 			fmt.Println("ProvideMissingBlock() Marshal Panic:")
 			panic(err)
 		}
-		go (*c).Net.SendMessage(msg.Address, PROOF_FOUND, data)
+		(*c).Net.SendMessage(msg.Address, PROOF_FOUND, data)
 	}
 }
 
@@ -225,6 +231,8 @@ func (c *Client) SetLastConfirmed() {
 
 // Utility method that displays all confirmed balances for all clients
 func (c *Client) ShowAllBalances() {
+	(*c).mu.Lock()
+	defer (*c).mu.Unlock()
 	fmt.Printf("Showing balances:")
 	for id, balance := range (*(*c).LastConfirmedBlock).Balances {
 		fmt.Printf("	%v", id)
@@ -245,6 +253,8 @@ func (c *Client) Log(msg string) {
 
 // Print out the blocks in the blockchain from the current head to the genesis block.
 func (c *Client) ShowBlockchain() {
+	(*c).mu.Lock()
+	defer (*c).mu.Unlock()
 	block := (*c).LastBlock
 	fmt.Println("BLOCKCHAIN:")
 	for block != nil {
@@ -252,7 +262,6 @@ func (c *Client) ShowBlockchain() {
 		fmt.Println(blockId)
 		block = (*c).Blocks[(*block).PrevBlockHash]
 	}
-
 }
 
 func NewClient(name string, Net *FakeNet, startingBlock *Block, keyPair *rsa.PrivateKey) *Client {
