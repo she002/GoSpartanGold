@@ -2,13 +2,12 @@ package blockchain
 
 import (
 	"fmt"
-	"os"
 	"testing"
 	"time"
 )
 
 func TestNewMiner(t *testing.T) {
-	fmt.Println("TestNewClient:")
+	fmt.Println("TestNewMiner:")
 	// Create a fake net
 	net := NewFakeNet()
 
@@ -38,9 +37,9 @@ func TestNewMiner(t *testing.T) {
 	client1 := NewClient("Alice", net, genesis, privKey1)
 	client2 := NewClient("Bob", net, genesis, privKey2)
 	client3 := NewClient("Cindy", net, genesis, privKey3)
-	miner1 := NewMiner("Minnie", net, NUM_ROUNDS_MINING, genesis, privKey4)
-	miner2 := NewMiner("Mickey", net, NUM_ROUNDS_MINING, genesis, privKey5)
-	miner3 := NewMiner("Donald", net, NUM_ROUNDS_MINING, genesis, privKey6)
+	miner1 := NewMiner("Minnie", net, NUM_ROUNDS_MINING, genesis, privKey4, config)
+	miner2 := NewMiner("Mickey", net, NUM_ROUNDS_MINING, genesis, privKey5, config)
+	miner3 := NewMiner("Donald", net, NUM_ROUNDS_MINING, genesis, privKey6, config)
 
 	showBalancesC := func(c *Client) {
 		fmt.Printf("Alice has %d gold\n", c.LastBlock.BalanceOf(client1.GetAddress()))
@@ -59,6 +58,7 @@ func TestNewMiner(t *testing.T) {
 		fmt.Printf("Mickey has %d gold\n", m.LastBlock.BalanceOf(miner2.GetAddress()))
 		fmt.Printf("Donald has %d gold\n", m.LastBlock.BalanceOf(miner3.GetAddress()))
 	}
+	showBalancesC(client1)
 
 	net.Register(client1, client2, client3, miner1, miner2)
 
@@ -74,40 +74,45 @@ func TestNewMiner(t *testing.T) {
 	miner2.Initialize()
 
 	// A new transaction from client1 to client2
-	output1 := Output{Address: client2.GetAddress(), Amount: 200}
+	output1 := Output{Address: client2.GetAddress(), Amount: 40}
 	outputs := []Output{output1}
 
 	client1.PostTransaction(outputs, config.defaultTxFee)
 
 	go func() {
 		time.Sleep(2 * time.Second)
+		fmt.Println()
+		fmt.Println("***Starting a late-to-the-party miner***")
+		fmt.Println()
 		net.Register(miner3)
+		miner3.Initialize()
 	}()
 
-	go func() {
-		time.Sleep(5 * time.Second)
-		fmt.Println()
-		fmt.Printf("Minnie has a chain of length %d\n", miner1.CurrentBlock.ChainLength)
+	//go func() {
+	time.Sleep(5 * time.Second)
+	fmt.Println()
+	fmt.Printf("Minnie has a chain of length %d\n", miner1.CurrentBlock.ChainLength)
 
-		fmt.Println()
-		fmt.Printf("Mickey has a chain of length %d\n", miner2.CurrentBlock.ChainLength)
+	fmt.Println()
+	fmt.Printf("Mickey has a chain of length %d\n", miner2.CurrentBlock.ChainLength)
 
-		fmt.Println()
-		fmt.Printf("Donald has a chain of length %d\n", miner3.CurrentBlock.ChainLength)
+	fmt.Println()
+	fmt.Printf("Donald has a chain of length %d\n", miner3.CurrentBlock.ChainLength)
 
-		fmt.Println()
-		fmt.Println("Final Balances (Minnie's perspective):")
-		showBalancesM(miner1)
+	fmt.Println()
+	fmt.Println("Final Balances (Minnie's perspective):")
+	showBalancesM(miner1)
 
-		fmt.Println()
-		fmt.Println("Final Balances (Alice's perspective):")
-		showBalancesC(client1)
+	fmt.Println()
+	fmt.Println("Final Balances (Alice's perspective):")
+	showBalancesC(client1)
 
-		fmt.Println()
-		fmt.Println("Final Balances (Donald's perspective):")
-		showBalancesM(miner3)
+	fmt.Println()
+	fmt.Println("Final Balances (Donald's perspective):")
+	showBalancesM(miner3)
 
-		os.Exit(0)
-	}()
-
+	//	os.Exit(0)
+	//}()
+	client1.ShowBlockchain()
+	fmt.Println("End!")
 }

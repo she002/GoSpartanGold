@@ -35,7 +35,7 @@ type Miner struct {
 	Transactions *Set[*Transaction]
 }
 
-func NewMiner(name string, Net *FakeNet, miningRounds uint32, startingBlock *Block, keyPair *rsa.PrivateKey) *Miner {
+func NewMiner(name string, Net *FakeNet, miningRounds uint32, startingBlock *Block, keyPair *rsa.PrivateKey, config BlockchainConfig) *Miner {
 	var m Miner
 	m.Net = Net
 	m.Name = name
@@ -49,7 +49,7 @@ func NewMiner(name string, Net *FakeNet, miningRounds uint32, startingBlock *Blo
 
 	m.Address = GenerateAddress(m.PubKey)
 	m.Nonce = 0
-
+	m.Config = config
 	m.PendingOutgoingTransactions = make(map[string]*Transaction)
 	m.PendingReceivedTransactions = make(map[string]*Transaction)
 	m.Blocks = make(map[string]*Block)
@@ -72,7 +72,7 @@ func NewMiner(name string, Net *FakeNet, miningRounds uint32, startingBlock *Blo
 
 func (m *Miner) SetGenesisBlock(startingBlock *Block) {
 	if (*m).LastBlock != nil {
-		fmt.Printf("Cannot set starting block for existing blockchain")
+		panic("Cannot set starting block for existing blockchain")
 	}
 	(*m).LastConfirmedBlock = startingBlock
 	(*m).LastBlock = startingBlock
@@ -90,7 +90,7 @@ func (m *Miner) Initialize() {
 	(*m).Emitter.On(START_MINING, m.FindProof)
 	(*m).Emitter.On(POST_TRANSACTION, m.AddTransactionBytes)
 
-	go (*m).Emitter.Emit(START_MINING)
+	go (*m).Emitter.Emit(START_MINING, false)
 }
 
 func (m *Miner) StartNewSearch(txSet *Set[*Transaction]) {
@@ -141,7 +141,7 @@ func (m *Miner) FindProof(oneAndDone bool) {
 	// If we are testing, don't continue the search
 	// TODO
 	if !oneAndDone {
-		go (*m).Emitter.Emit(START_MINING)
+		go (*m).Emitter.Emit(START_MINING, false)
 	}
 }
 
@@ -392,8 +392,7 @@ func (m *Miner) SetLastConfirmed() {
 
 // Utility method that displays all confirmed balances for all clients
 func (m *Miner) ShowAllBalances() {
-	(*m).mu.Lock()
-	defer (*m).mu.Unlock()
+
 	fmt.Printf("Showing balances:")
 	for id, balance := range (*m).LastConfirmedBlock.Balances {
 		fmt.Printf("	%v", id)
@@ -404,8 +403,7 @@ func (m *Miner) ShowAllBalances() {
 
 // Print out the blocks in the blockchain from the current head to the genesis block.
 func (m *Miner) ShowBlockchain() {
-	(*m).mu.Lock()
-	defer (*m).mu.Unlock()
+
 	block := (*m).LastBlock
 	fmt.Println("BLOCKCHAIN:")
 	for block != nil {

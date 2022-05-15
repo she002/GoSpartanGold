@@ -161,7 +161,11 @@ func BytesToBlock(data []byte) (*Block, error) {
 }
 
 func (block *Block) GetHash() (string, error) {
-	blockData, err := BlockToBytes(block)
+	block4hash := *block
+	block4hash.Balances = nil
+	block4hash.NextNonce = nil
+
+	blockData, err := BlockToBytes(&block4hash)
 	var blockHash [32]byte
 	if err == nil {
 		blockHash = sha256.Sum256(blockData)
@@ -172,7 +176,11 @@ func (block *Block) GetHash() (string, error) {
 }
 
 func (block *Block) GetHashStr() string {
-	blockData, err := BlockToBytes(block)
+	block4hash := *block
+	block4hash.Balances = nil
+	block4hash.NextNonce = nil
+
+	blockData, err := BlockToBytes(&block4hash)
 	var blockHash [32]byte
 	if err == nil {
 		blockHash = sha256.Sum256(blockData)
@@ -187,7 +195,10 @@ func (block *Block) IsGenesisBlock() bool {
 }
 
 func (block *Block) hasValidProof() bool {
-	data, err := BlockToBytes(block)
+	block4hash := *block
+	block4hash.Balances = nil
+	block4hash.NextNonce = nil
+	data, err := BlockToBytes(&block4hash)
 	if err != nil {
 		fmt.Printf("Failed to convert Block to Byte array")
 		return false
@@ -213,7 +224,7 @@ func (block *Block) AddTransaction(tx *Transaction) bool {
 		fmt.Printf("Insufficient fund for transaction %s", tx.Id())
 		return false
 	}
-	fmt.Println("Add transaction")
+
 	nextNonceIndex := block.FindNextNonceIndex((*tx).Info.From)
 	if nextNonceIndex == -1 {
 		addNextNonce := NextNonceType{Id: (*tx).Info.From, Nonce: 0}
@@ -290,7 +301,9 @@ func (block *Block) Rerun(prevBlock *Block) bool {
 	copy(txMap, (*block).Transactions)
 	(*block).Transactions = make([]TransactionType, 0)
 	for _, v := range txMap {
-		block.AddTransaction(&v.Tx)
+		if !block.AddTransaction(&v.Tx) {
+			return false
+		}
 	}
 	return true
 }

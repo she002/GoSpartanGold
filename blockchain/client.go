@@ -231,8 +231,7 @@ func (c *Client) SetLastConfirmed() {
 
 // Utility method that displays all confirmed balances for all clients
 func (c *Client) ShowAllBalances() {
-	(*c).mu.Lock()
-	defer (*c).mu.Unlock()
+
 	fmt.Printf("Showing balances:")
 	for id, balance := range (*(*c).LastConfirmedBlock).Balances {
 		fmt.Printf("	%v", id)
@@ -253,8 +252,7 @@ func (c *Client) Log(msg string) {
 
 // Print out the blocks in the blockchain from the current head to the genesis block.
 func (c *Client) ShowBlockchain() {
-	(*c).mu.Lock()
-	defer (*c).mu.Unlock()
+
 	block := (*c).LastBlock
 	fmt.Println("BLOCKCHAIN:")
 	for block != nil {

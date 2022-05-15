@@ -18,30 +18,35 @@ func NewSet[T SetItemInterface]() *Set[T] {
 }
 
 func (s *Set[T]) Add(value T) {
-	(*s).mu.Lock()
-	defer (*s).mu.Unlock()
+
 	if !s.Contains(value) {
+		(*s).mu.Lock()
 		hashStr := value.GetHashStr()
 		(*s).items[hashStr] = value
+		(*s).mu.Unlock()
 	}
 }
 
 func (s *Set[T]) Remove(value T) {
-	(*s).mu.Lock()
-	defer (*s).mu.Unlock()
 	if s.Contains(value) {
+		(*s).mu.Lock()
 		hashStr := value.GetHashStr()
 		delete((*s).items, hashStr)
+		(*s).mu.Unlock()
 	}
 }
 
 func (s *Set[T]) Contains(value T) bool {
+	(*s).mu.Lock()
+	defer (*s).mu.Unlock()
 	hashStr := value.GetHashStr()
 	_, c := (*s).items[hashStr]
 	return c
 }
 
 func (s *Set[T]) Size() int {
+	(*s).mu.Lock()
+	defer (*s).mu.Unlock()
 	return len((*s).items)
 }
 
