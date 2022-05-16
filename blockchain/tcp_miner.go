@@ -4,13 +4,17 @@ import (
 	"crypto/rsa"
 	"encoding/json"
 	"fmt"
+	"net"
+	"os"
 	"sync"
 
 	"github.com/chuckpreslar/emission"
 )
 
+const REGISTER string = "REGISTER"
+
 // Miners are clients, but they also mine blocks looking for "proofs".
-type Miner struct {
+type TcpMiner struct {
 	// The variables that are same as Client
 	Name                        string
 	Address                     string
@@ -25,19 +29,42 @@ type Miner struct {
 	ReceivedBlock               *Block
 	Config                      BlockchainConfig
 	Nonce                       uint32
-	Net                         *FakeNet
-	Emitter                     *emission.Emitter
-	mu                          sync.Mutex
+	//Net                         *FakeNet
+	Emitter *emission.Emitter
+	mu      sync.Mutex
 
 	// Miner's specific variables
 	CurrentBlock *Block
 	MiningRounds uint32
 	Transactions *Set[*Transaction]
+
+	//Tcp
+	Net                 *RealNet
+	Connection          string
+	KnownTcpConnections []TcpConnectionInfo
 }
 
-func NewMiner(name string, Net *FakeNet, miningRounds uint32, startingBlock *Block, keyPair *rsa.PrivateKey, config BlockchainConfig) *Miner {
-	var m Miner
-	m.Net = Net
+type TcpConnectionInfo struct {
+	Name       string
+	Address    string
+	Connection string
+}
+
+type TcpData struct {
+	Msg  string
+	Data []byte
+}
+
+type SaveJsonType struct {
+	Name                string
+	Connection          string
+	KeyPair             rsa.PrivateKey
+	KnownTcpConnections []TcpConnectionInfo
+}
+
+func NewTcpMiner(name string, net *RealNet, miningRounds uint32, startingBlock *Block, keyPair *rsa.PrivateKey, connection string, config BlockchainConfig) *TcpMiner {
+	var m TcpMiner
+	m.Net = net
 	m.Name = name
 
 	if keyPair == nil {
@@ -67,10 +94,12 @@ func NewMiner(name string, Net *FakeNet, miningRounds uint32, startingBlock *Blo
 
 	m.Transactions = NewSet[*Transaction]()
 
+	m.Connection = connection
+
 	return &m
 }
 
-func (m *Miner) SetGenesisBlock(startingBlock *Block) {
+func (m *TcpMiner) SetGenesisBlock(startingBlock *Block) {
 	if (*m).LastBlock != nil {
 		panic("Cannot set starting block for existing blockchain")
 	}
@@ -81,9 +110,11 @@ func (m *Miner) SetGenesisBlock(startingBlock *Block) {
 }
 
 // Starts listeners and begins mining
-func (m *Miner) Initialize() {
+func (m *TcpMiner) Initialize(knownTcpConnections []TcpConnectionInfo) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
+
+	(*m).KnownTcpConnections = append((*m).KnownTcpConnections, knownTcpConnections...)
 
 	m.StartNewSearch(nil)
 
@@ -91,9 +122,13 @@ func (m *Miner) Initialize() {
 	(*m).Emitter.On(POST_TRANSACTION, m.AddTransactionBytes)
 
 	go (*m).Emitter.Emit(START_MINING, false)
+	go m.StartListening((*m).Connection)
+	for _, conn := range (*m).KnownTcpConnections {
+		(*m).Net.Register(conn)
+	}
 }
 
-func (m *Miner) StartNewSearch(txSet *Set[*Transaction]) {
+func (m *TcpMiner) StartNewSearch(txSet *Set[*Transaction]) {
 
 	//TODO assign currentBlock
 	target := CalculateTarget(POW_LEADING_ZEROES)
@@ -121,7 +156,7 @@ func (m *Miner) StartNewSearch(txSet *Set[*Transaction]) {
 }
 
 // Looks for a "proof".
-func (m *Miner) FindProof(oneAndDone bool) {
+func (m *TcpMiner) FindProof(oneAndDone bool) {
 
 	(*m).mu.Lock()
 	defer (*m).mu.Unlock()
@@ -146,7 +181,7 @@ func (m *Miner) FindProof(oneAndDone bool) {
 }
 
 // Broadcast the block, with a valid proof included
-func (m *Miner) AnnounceProof() {
+func (m *TcpMiner) AnnounceProof() {
 
 	data, err := BlockToBytes((*m).CurrentBlock)
 	if err != nil {
@@ -158,7 +193,7 @@ func (m *Miner) AnnounceProof() {
 
 // Validates and adds a block to the list of blocks, possibly
 // updating the head of the blockchain.
-func (m *Miner) ReceiveBlock(b Block) *Block {
+func (m *TcpMiner) ReceiveBlock(b Block) *Block {
 	(*m).mu.Lock()
 	defer (*m).mu.Unlock()
 
@@ -228,7 +263,7 @@ func (m *Miner) ReceiveBlock(b Block) *Block {
 	return block
 }
 
-func (m *Miner) ReceiveBlockBytes(bs []byte) *Block {
+func (m *TcpMiner) ReceiveBlockBytes(bs []byte) *Block {
 
 	block, err := BytesToBlock(bs)
 	if err != nil {
@@ -239,7 +274,7 @@ func (m *Miner) ReceiveBlockBytes(bs []byte) *Block {
 }
 
 // This function should determine what transactions need to be added or deleted.
-func (m *Miner) SyncTransaction(newBlock *Block) *Set[*Transaction] {
+func (m *TcpMiner) SyncTransaction(newBlock *Block) *Set[*Transaction] {
 
 	cb := (*m).CurrentBlock
 	cbTxs := NewSet[*Transaction]()
@@ -282,13 +317,13 @@ func (m *Miner) SyncTransaction(newBlock *Block) *Set[*Transaction] {
 
 // Returns false if transaction is not accepted.Otherwise add the
 // transaction to the current block.
-func (m *Miner) AddTransaction(tx *Transaction) {
+func (m *TcpMiner) AddTransaction(tx *Transaction) {
 	(*m).mu.Lock()
 	defer (*m).mu.Unlock()
 	(*m).Transactions.Add(tx)
 }
 
-func (m *Miner) AddTransactionBytes(data []byte) {
+func (m *TcpMiner) AddTransactionBytes(data []byte) {
 
 	tx, err := BytesToTransaction(data)
 	if err != nil {
@@ -298,12 +333,12 @@ func (m *Miner) AddTransactionBytes(data []byte) {
 }
 
 // The amount of gold available to the client looking at the last confirmed block
-func (m *Miner) ConfirmedBalance() uint32 {
+func (m *TcpMiner) ConfirmedBalance() uint32 {
 	return (*m).LastConfirmedBlock.BalanceOf((*m).Address)
 }
 
 // Any gold received in the last confirmed block or before
-func (m *Miner) AvailableGold() uint32 {
+func (m *TcpMiner) AvailableGold() uint32 {
 	var pendingSpent uint32 = 0
 	for _, tx := range (*m).PendingOutgoingTransactions {
 		pendingSpent += tx.TotalOutput()
@@ -311,7 +346,7 @@ func (m *Miner) AvailableGold() uint32 {
 	return m.ConfirmedBalance() - pendingSpent
 }
 
-func (m *Miner) PostTransaction(outputs []Output, fee uint32) {
+func (m *TcpMiner) PostTransaction(outputs []Output, fee uint32) {
 
 	(*m).mu.Lock()
 
@@ -338,7 +373,7 @@ func (m *Miner) PostTransaction(outputs []Output, fee uint32) {
 
 // Request the previous block from the network.
 // convert []byte into string
-func (m *Miner) RequestMissingBlock(block *Block) {
+func (m *TcpMiner) RequestMissingBlock(block *Block) {
 	m.Log(fmt.Sprintf("Asking for missing block: %v", block.PrevBlockHash))
 	var msg = Message{(*m).Address, (*block).PrevBlockHash}
 	jsonByte, err := json.Marshal(msg)
@@ -350,7 +385,7 @@ func (m *Miner) RequestMissingBlock(block *Block) {
 }
 
 // Takes an object representing a request for a missing block
-func (m *Miner) ProvideMissingBlock(data []byte) {
+func (m *TcpMiner) ProvideMissingBlock(data []byte) {
 	(*m).mu.Lock()
 	defer (*m).mu.Unlock()
 
@@ -373,7 +408,7 @@ func (m *Miner) ProvideMissingBlock(data []byte) {
 
 // Sets the last confirmed block according to the most accepted block and also
 // updating pending transactions according to this block.
-func (m *Miner) SetLastConfirmed() {
+func (m *TcpMiner) SetLastConfirmed() {
 	block := (*m).LastBlock
 	confirmedBlockHeight := uint32(0)
 	if (*block).ChainLength > CONFIRMED_DEPTH {
@@ -391,7 +426,7 @@ func (m *Miner) SetLastConfirmed() {
 }
 
 // Utility method that displays all confirmed balances for all clients
-func (m *Miner) ShowAllBalances() {
+func (m *TcpMiner) ShowAllBalances() {
 
 	fmt.Printf("Showing balances:")
 	for id, balance := range (*m).LastConfirmedBlock.Balances {
@@ -402,7 +437,7 @@ func (m *Miner) ShowAllBalances() {
 }
 
 // Print out the blocks in the blockchain from the current head to the genesis block.
-func (m *Miner) ShowBlockchain() {
+func (m *TcpMiner) ShowBlockchain() {
 
 	block := (*m).LastBlock
 	fmt.Println("BLOCKCHAIN:")
@@ -414,7 +449,7 @@ func (m *Miner) ShowBlockchain() {
 }
 
 // Logs messages to stdout
-func (m *Miner) Log(msg string) {
+func (m *TcpMiner) Log(msg string) {
 	name := (*m).Address[0:10]
 	if len((*m).Name) > 0 {
 		name = (*m).Name
@@ -423,9 +458,136 @@ func (m *Miner) Log(msg string) {
 	fmt.Printf("	%s\n", msg)
 }
 
-func (m *Miner) GetAddress() string {
+func (m *TcpMiner) RegisterWith(minerConnection string) {
+	m.Log(fmt.Sprintf("Connection: %s", minerConnection))
+	var tcpInfo TcpConnectionInfo
+	tcpInfo.Name = (*m).Name
+	tcpInfo.Address = (*m).Address
+	tcpInfo.Connection = (*m).Connection
+
+	tcpInfoBytes, err := json.Marshal(tcpInfo)
+	if err != nil {
+		fmt.Println("RegisterWith() TcpInfo unmarshal Panic: ", err)
+		return
+	}
+
+	var conn TcpData
+	conn.Msg = REGISTER
+	conn.Data = make([]byte, len(tcpInfoBytes))
+	copy(conn.Data, tcpInfoBytes)
+
+	connBytes, err := json.Marshal(conn)
+	if err != nil {
+		fmt.Println("RegisterWith() TcpData unmarshal Panic: ", err)
+		return
+	}
+
+	c, err := net.Dial("tcp", minerConnection)
+	if err != nil {
+		fmt.Println(err)
+		return
+	}
+
+	c.Write(connBytes)
+
+}
+
+func (m *TcpMiner) HandleConnection(connBytes []byte) {
+	var receivedData TcpData
+	err := json.Unmarshal(connBytes, &receivedData)
+	if err != nil {
+		fmt.Println("HandleConnection(): TcpData Unmarshal failed: ", err)
+		return
+	}
+
+	if receivedData.Msg == REGISTER {
+		var tcpInfo TcpConnectionInfo
+		err := json.Unmarshal(receivedData.Data, &tcpInfo)
+		if err != nil {
+			fmt.Println("HandleConnection(): TcpClientInfo Unmarshal failed: ", err)
+			return
+		}
+
+		if !(*m).Net.Recognizes(&tcpInfo) {
+			m.RegisterWith(tcpInfo.Connection)
+		}
+
+		fmt.Printf("Registering %v\n", tcpInfo)
+		(*m).Net.Register(tcpInfo)
+	} else {
+		(*m).Emitter.Emit(receivedData.Msg, receivedData.Data)
+	}
+
+}
+
+func (m *TcpMiner) StartListening(port string) {
+	l, err := net.Listen("tcp", port)
+	if err != nil {
+		fmt.Println(err)
+		return
+	}
+	defer l.Close()
+
+	for {
+		conn, err := l.Accept()
+		if err != nil {
+			fmt.Println(err)
+			return
+		}
+		var data []byte
+		for {
+			chunk := make([]byte, 512)
+			n, err := conn.Read(chunk)
+			if err != nil {
+				panic(err)
+			}
+			data = append(data, chunk[:n]...)
+
+			if n < 512 {
+				break
+			}
+		}
+
+		go m.HandleConnection(data)
+		conn.Close()
+	}
+}
+
+func (m *TcpMiner) ShowPendingOut() string {
+	(*m).mu.Lock()
+	defer (*m).mu.Unlock()
+	var s string = ""
+	for _, tx := range (*m).PendingOutgoingTransactions {
+		s += fmt.Sprintf("\n    id: %s nonce: %d totalOutput %d\n", tx.Id(), (*tx).Info.Nonce, tx.TotalOutput())
+	}
+	return s
+}
+
+func (m *TcpMiner) SaveJson(fileName string) {
+	(*m).mu.Lock()
+	defer (*m).mu.Unlock()
+	var jsonData SaveJsonType
+	jsonData.Name = (*m).Name
+	jsonData.KeyPair = *(*m).PrivKey
+	jsonData.Connection = (*m).Connection
+	jsonData.KnownTcpConnections = append(jsonData.KnownTcpConnections, (*m).KnownTcpConnections...)
+	jsonBytes, err := json.Marshal(jsonData)
+	if err != nil {
+		fmt.Println("SaveJson() Marshal fail:", err)
+		return
+	}
+
+	err = os.WriteFile(fileName, jsonBytes, 0755)
+	if err != nil {
+		fmt.Println("SaveJson() Write file fail:", err)
+		return
+	}
+}
+
+func (m *TcpMiner) GetAddress() string {
 	return (*m).Address
 }
-func (m *Miner) GetEmitter() *emission.Emitter {
+
+func (m *TcpMiner) GetEmitter() *emission.Emitter {
 	return (*m).Emitter
 }

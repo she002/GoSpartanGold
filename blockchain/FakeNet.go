@@ -1,4 +1,4 @@
-package blockchain
+package main
 
 // Simulate a network by using events to enable simpler testing
 import (
