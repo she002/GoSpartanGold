@@ -165,7 +165,7 @@ func (m *TcpMiner) FindProof(oneAndDone bool) {
 
 	for (*m).CurrentBlock.Proof < pausePoint {
 		if (*m).CurrentBlock.hasValidProof() {
-			m.Log(fmt.Sprintf("found proof for block %d: %d", (*m).CurrentBlock.ChainLength, (*m).CurrentBlock.Proof))
+			//m.Log(fmt.Sprintf("found proof for block %d: %d", (*m).CurrentBlock.ChainLength, (*m).CurrentBlock.Proof))
 			m.AnnounceProof()
 			go m.ReceiveBlock(*(*m).CurrentBlock)
 			break
@@ -205,7 +205,7 @@ func (m *TcpMiner) ReceiveBlock(b Block) *Block {
 	}
 
 	if !block.hasValidProof() && !block.IsGenesisBlock() {
-		m.Log(fmt.Sprintf("Block %v does not have a valid proof\n", blockId))
+		//m.Log(fmt.Sprintf("Block %v does not have a valid proof\n", blockId))
 		return nil
 	}
 
@@ -248,14 +248,14 @@ func (m *TcpMiner) ReceiveBlock(b Block) *Block {
 	delete((*m).PendingBlocks, blockId)
 
 	for _, uBlock := range unstuckBlocksArr {
-		m.Log(fmt.Sprintf("processing unstuck block %v", uBlock.GetHashStr()))
+		//m.Log(fmt.Sprintf("processing unstuck block %v", uBlock.GetHashStr()))
 		// Need to change the "" into empty []byte
 		go m.ReceiveBlock(*uBlock)
 	}
-	m.Log(fmt.Sprintf("block %s received", block.GetHashStr()))
+	//m.Log(fmt.Sprintf("block %s received", block.GetHashStr()))
 
 	if (*m).CurrentBlock != nil && (*block).ChainLength >= (*m).CurrentBlock.ChainLength {
-		m.Log("Cutting over to new chain")
+		//m.Log("Cutting over to new chain")
 		txSet := m.SyncTransaction(block)
 		m.StartNewSearch(txSet)
 	}
@@ -339,6 +339,8 @@ func (m *TcpMiner) ConfirmedBalance() uint32 {
 
 // Any gold received in the last confirmed block or before
 func (m *TcpMiner) AvailableGold() uint32 {
+	(*m).mu.Lock()
+	defer (*m).mu.Unlock()
 	var pendingSpent uint32 = 0
 	for _, tx := range (*m).PendingOutgoingTransactions {
 		pendingSpent += tx.TotalOutput()
@@ -347,8 +349,6 @@ func (m *TcpMiner) AvailableGold() uint32 {
 }
 
 func (m *TcpMiner) PostTransaction(outputs []Output, fee uint32) {
-
-	(*m).mu.Lock()
 
 	total := fee
 	for _, output := range outputs {
@@ -362,6 +362,7 @@ func (m *TcpMiner) PostTransaction(outputs []Output, fee uint32) {
 	tx, _ := NewTransaction((*m).Address, (*m).Nonce, (*m).PubKey, nil, fee, outputs, nil)
 
 	tx.Sign((*m).PrivKey)
+	(*m).mu.Lock()
 	(*m).PendingOutgoingTransactions[tx.Id()] = tx
 	(*m).Nonce++
 	data, _ := TransactionToBytes(tx)
@@ -374,7 +375,7 @@ func (m *TcpMiner) PostTransaction(outputs []Output, fee uint32) {
 // Request the previous block from the network.
 // convert []byte into string
 func (m *TcpMiner) RequestMissingBlock(block *Block) {
-	m.Log(fmt.Sprintf("Asking for missing block: %v", block.PrevBlockHash))
+	//m.Log(fmt.Sprintf("Asking for missing block: %v", block.PrevBlockHash))
 	var msg = Message{(*m).Address, (*block).PrevBlockHash}
 	jsonByte, err := json.Marshal(msg)
 	if err != nil {
@@ -396,13 +397,27 @@ func (m *TcpMiner) ProvideMissingBlock(data []byte) {
 		panic(err)
 	}
 	if val, received := (*m).Blocks[msg.PrevBlockHash]; received {
-		m.Log(fmt.Sprintf("Providing missing block %v", val.GetHashStr()))
+		//m.Log(fmt.Sprintf("Providing missing block %v", val.GetHashStr()))
 		data, err := BlockToBytes(val)
 		if err != nil {
 			fmt.Println("ProvideMissingBlock() Marshal Panic:")
 			panic(err)
 		}
 		(*m).Net.SendMessage(msg.Address, PROOF_FOUND, data)
+	}
+}
+
+// Resend any transactions in the pending list
+func (m *TcpMiner) ResendPendingTransactions() {
+	(*m).mu.Lock()
+	defer (*m).mu.Unlock()
+	for _, tx := range (*m).PendingOutgoingTransactions {
+		jsonByte, err := json.Marshal(*tx)
+		if err != nil {
+			fmt.Println("ResendPendingTransactions() Marshal Panic:")
+			panic(err)
+		}
+		(*m).Net.Broadcast(POST_TRANSACTION, jsonByte)
 	}
 }
 
@@ -482,6 +497,7 @@ func (m *TcpMiner) RegisterWith(minerConnection string) {
 		return
 	}
 
+	minerConnection = "localhost:" + minerConnection
 	c, err := net.Dial("tcp", minerConnection)
 	if err != nil {
 		fmt.Println(err)
@@ -489,7 +505,7 @@ func (m *TcpMiner) RegisterWith(minerConnection string) {
 	}
 
 	c.Write(connBytes)
-
+	c.Close()
 }
 
 func (m *TcpMiner) HandleConnection(connBytes []byte) {
@@ -514,6 +530,7 @@ func (m *TcpMiner) HandleConnection(connBytes []byte) {
 
 		fmt.Printf("Registering %v\n", tcpInfo)
 		(*m).Net.Register(tcpInfo)
+		(*m).KnownTcpConnections = append((*m).KnownTcpConnections, tcpInfo)
 	} else {
 		(*m).Emitter.Emit(receivedData.Msg, receivedData.Data)
 	}
@@ -521,6 +538,7 @@ func (m *TcpMiner) HandleConnection(connBytes []byte) {
 }
 
 func (m *TcpMiner) StartListening(port string) {
+	port = ":" + port
 	l, err := net.Listen("tcp", port)
 	if err != nil {
 		fmt.Println(err)

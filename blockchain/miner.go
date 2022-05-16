@@ -371,6 +371,20 @@ func (m *Miner) ProvideMissingBlock(data []byte) {
 	}
 }
 
+// Resend any transactions in the pending list
+func (m *Miner) ResendPendingTransactions() {
+	(*m).mu.Lock()
+	defer (*m).mu.Unlock()
+	for _, tx := range (*m).PendingOutgoingTransactions {
+		jsonByte, err := json.Marshal(*tx)
+		if err != nil {
+			fmt.Println("ResendPendingTransactions() Marshal Panic:")
+			panic(err)
+		}
+		(*m).Net.Broadcast(POST_TRANSACTION, jsonByte)
+	}
+}
+
 // Sets the last confirmed block according to the most accepted block and also
 // updating pending transactions according to this block.
 func (m *Miner) SetLastConfirmed() {

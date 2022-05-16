@@ -111,8 +111,7 @@ func TestNewMiner(t *testing.T) {
 	fmt.Println("Final Balances (Donald's perspective):")
 	showBalancesM(miner3)
 
-	//	os.Exit(0)
-	//}()
 	client1.ShowBlockchain()
 	fmt.Println("End!")
+	//os.Exit(0)
 }

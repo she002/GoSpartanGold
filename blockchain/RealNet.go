@@ -38,7 +38,8 @@ func (f *RealNet) Broadcast(msg string, data []byte) {
 			return
 		}
 
-		c, err := net.Dial("tcp", client.Connection)
+		realConnection := "localhost:" + client.Connection
+		c, err := net.Dial("tcp", realConnection)
 		if err != nil {
 			fmt.Println(err)
 			return
@@ -82,7 +83,8 @@ func (f *RealNet) SendMessage(addr string, msg string, jsonByte []byte) {
 		return
 	}
 
-	c, err := net.Dial("tcp", client.Connection)
+	realConnection := "localhost:" + client.Connection
+	c, err := net.Dial("tcp", realConnection)
 	if err != nil {
 		fmt.Println(err)
 		return
