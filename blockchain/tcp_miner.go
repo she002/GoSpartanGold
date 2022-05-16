@@ -131,8 +131,9 @@ func (m *TcpMiner) Initialize(knownTcpConnections []TcpConnectionInfo) {
 func (m *TcpMiner) StartNewSearch(txSet *Set[*Transaction]) {
 
 	//TODO assign currentBlock
-	target := CalculateTarget(POW_LEADING_ZEROES)
-	(*m).CurrentBlock = NewBlock((*m).Address, (*m).LastBlock, target, (*m).Config.coinbaseAmount)
+	//target := CalculateTarget(POW_LEADING_ZEROES)
+	target := (*(*m).LastBlock).Target
+	(*m).CurrentBlock = NewBlock((*m).Address, (*m).LastBlock, &target, (*m).Config.coinbaseAmount)
 	//Blockchain.makeBlock(m.address, m.lastBlock)
 
 	if txSet == nil {
